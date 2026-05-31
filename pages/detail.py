@@ -288,14 +288,14 @@ def render_detail_page() -> None:
         .rename(columns={"tien_thuc_thu": "lk"})
     )
 
-    # Tổng lũy kế theo nhóm để sort nhóm desc
+    # Tổng lũy kế theo nhóm để sort nhóm desc; "ĐỐI TÁC KHÁC" luôn cuối
     nhom_total = detail_lk.groupby("nhom_doi_tac")["lk"].sum().rename("nhom_lk")
     detail_lk  = detail_lk.merge(nhom_total, on="nhom_doi_tac")
-    # "khác" luôn cuối trong nhóm; còn lại sort lk desc; nhóm sort nhom_lk desc
-    detail_lk["_is_khac"] = detail_lk["doi_tac"].str.lower().str.contains("khác|khac", na=False)
+    detail_lk["_nhom_khac"] = detail_lk["nhom_doi_tac"].str.upper().str.contains("KHÁC|KHAC", na=False)
+    detail_lk["_is_khac"]   = detail_lk["doi_tac"].str.lower().str.contains("khác|khac", na=False)
     detail_lk = detail_lk.sort_values(
-        ["nhom_lk", "_is_khac", "lk"], ascending=[False, True, False]
-    ).drop(columns=["nhom_lk", "_is_khac"])
+        ["_nhom_khac", "nhom_lk", "_is_khac", "lk"], ascending=[True, False, True, False]
+    ).drop(columns=["nhom_lk", "_nhom_khac", "_is_khac"])
 
     # Product breakdown
     _prod_df = df[df["product_group"].str.strip() != ""]
