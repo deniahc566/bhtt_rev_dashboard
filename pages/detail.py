@@ -105,7 +105,7 @@ def render_detail_page() -> None:
         ), unsafe_allow_html=True)
 
     # ── Section 1: Diễn biến doanh thu theo tháng ─────────────────────────────
-    section_head("Diễn biến doanh thu theo tháng", f"T1–T4.{current_year}")
+    section_head("Diễn biến doanh thu theo tháng")
 
     col_monthly, col_trend = st.columns([1.4, 1])
 
@@ -139,7 +139,7 @@ def render_detail_page() -> None:
         )
         st.altair_chart(
             (bar + text).properties(height=260).configure_view(strokeWidth=0),
-            use_container_width=True,
+            width='stretch',
         )
 
     with col_trend:
@@ -176,10 +176,10 @@ def render_detail_page() -> None:
             )
             .properties(height=260)
         )
-        st.altair_chart(line.configure_view(strokeWidth=0), use_container_width=True)
+        st.altair_chart(line.configure_view(strokeWidth=0), width='stretch')
 
     # ── Section 2: Bảng xếp hạng nhóm đối tác ────────────────────────────────
-    section_head("Bảng xếp hạng nhóm đối tác", "LŨY KẾ NĂM")
+    section_head("Bảng xếp hạng nhóm đối tác")
 
     # Pivot theo tháng: lấy 4 tháng gần nhất
     pivot_months = sorted(df["thang_so"].unique())
@@ -195,8 +195,8 @@ def render_detail_page() -> None:
 
     th = (
         f"font-size:0.65rem;font-weight:700;text-transform:uppercase;"
-        f"color:{_MUTED};letter-spacing:0.07em;padding:8px 10px;"
-        f"border-bottom:2px solid {_INK};"
+        f"color:{_BLUE};letter-spacing:0.07em;padding:8px 10px;"
+        f"border-bottom:2px solid {_BLUE};"
     )
     month_headers = "".join(
         f'<th style="{th}text-align:right;">T{m}</th>' for m in pivot_months
@@ -248,15 +248,15 @@ def render_detail_page() -> None:
         for m in pivot_months
     )
     tot_style = (
-        f"font-weight:800;border-top:2px solid {_INK};border-bottom:none;"
-        f"background:#ebe6d6;padding:8px 10px;font-variant-numeric:tabular-nums;"
+        f"font-weight:800;border-top:2px solid {_BLUE};border-bottom:none;"
+        f"background:{_BLUE4};padding:8px 10px;font-variant-numeric:tabular-nums;"
     )
     table_rows += (
-        f"<tr style='background:#ebe6d6;'>"
-        f"<td style='text-align:left;{tot_style}font-size:0.80rem;'>TỔNG CỘNG</td>"
+        f"<tr style='background:{_BLUE4};'>"
+        f"<td style='text-align:left;{tot_style}font-size:0.80rem;color:{_BLUE};'>TỔNG CỘNG</td>"
         f"{tot_month_cells}"
-        f"<td style='text-align:right;{tot_style}font-size:0.80rem;'>{col_tong / 1e9:.2f}</td>"
-        f"<td style='text-align:right;{tot_style}'>100%</td>"
+        f"<td style='text-align:right;{tot_style}font-size:0.80rem;color:{_BLUE};'>{col_tong / 1e9:.2f}</td>"
+        f"<td style='text-align:right;{tot_style}color:{_BLUE};'>100%</td>"
         f"</tr>"
     )
 
@@ -274,62 +274,106 @@ def render_detail_page() -> None:
         unsafe_allow_html=True,
     )
 
-    # ── Section 3: Phân tích cơ cấu ───────────────────────────────────────────
-    section_head("Phân tích cơ cấu", "ĐỘ TẬP TRUNG ĐỐI TÁC")
+    # ── Section 3: Chi tiết từng đối tác theo tháng ───────────────────────────
+    section_head("Chi tiết từng đối tác theo tháng")
 
-    col_donut, col_detail = st.columns(2)
+    months = sorted(df["thang_so"].unique())
+    detail_agg = (
+        df.groupby(["nhom_doi_tac", "doi_tac", "thang_so"], as_index=False)["tien_thuc_thu"].sum()
+    )
+    detail_lk = (
+        df.groupby(["nhom_doi_tac", "doi_tac"], as_index=False)["tien_thuc_thu"]
+        .sum()
+        .rename(columns={"tien_thuc_thu": "lk"})
+        .sort_values(["nhom_doi_tac", "lk"], ascending=[True, False])
+    )
 
-    with col_donut:
-        _chart_title("Tỷ trọng đối tác — lũy kế")
-        _chart_sub("Mức độ tập trung doanh thu")
+    th_s = (
+        f"font-size:0.64rem;font-weight:700;text-transform:uppercase;"
+        f"color:{_BLUE};letter-spacing:0.09em;padding:7px 10px;"
+        f"border-bottom:2px solid {_BLUE};"
+    )
+    month_headers = "".join(
+        f'<th style="{th_s}text-align:right;">T{m}</th>' for m in months
+    )
 
-        top5_share = nhom_rev.head(5).copy()
-        others_rev = nhom_rev.iloc[5:]["tien_thuc_thu"].sum()
-        if others_rev > 0:
-            others_row = pd.DataFrame([{"nhom_doi_tac": "Khác", "tien_thuc_thu": others_rev}])
-            donut_df = pd.concat([top5_share, others_row], ignore_index=True)
-        else:
-            donut_df = top5_share.copy()
+    table_rows = ""
+    current_nhom = None
+    col_totals   = {m: 0.0 for m in months}
+    col_total_lk = 0.0
 
-        color_range = _LINE_COLORS[:len(donut_df)]
-        donut = (
-            alt.Chart(donut_df)
-            .mark_arc(innerRadius=65, outerRadius=115, cornerRadius=2)
-            .encode(
-                theta=alt.Theta("tien_thuc_thu:Q"),
-                color=alt.Color(
-                    "nhom_doi_tac:N",
-                    scale=alt.Scale(
-                        domain=donut_df["nhom_doi_tac"].tolist(),
-                        range=color_range,
-                    ),
-                    legend=alt.Legend(orient="bottom", labelFontSize=10, symbolSize=80),
-                ),
-                tooltip=[
-                    alt.Tooltip("nhom_doi_tac:N", title="Nhóm"),
-                    alt.Tooltip("tien_thuc_thu:Q", title="Doanh thu", format=",.0f"),
-                ],
+    for _, row in detail_lk.iterrows():
+        nhom = row["nhom_doi_tac"]
+        dt   = row["doi_tac"]
+        lk   = row["lk"]
+        col_total_lk += lk
+
+        if nhom != current_nhom:
+            current_nhom = nhom
+            nhom_lk_val = detail_lk[detail_lk["nhom_doi_tac"] == nhom]["lk"].sum()
+            table_rows += (
+                f"<tr style='background:#eef3ff;'>"
+                f"<td colspan='{2 + len(months)}' style='text-align:left;font-weight:700;"
+                f"font-size:0.78rem;color:{_BLUE};padding:7px 10px;"
+                f"border-top:2px solid {_LINE};'>"
+                f"{nhom} &nbsp;—&nbsp; "
+                f"<span style='font-weight:400;'>{nhom_lk_val/1e9:.2f} tỷ</span>"
+                f"</td></tr>"
             )
-            .properties(height=280)
-        )
-        st.altair_chart(donut.configure_view(strokeWidth=0), use_container_width=True)
 
-    with col_detail:
-        _chart_title("Đối tác chủ lực — chi tiết")
-        _chart_sub("Một số đối tác/sản phẩm tiêu biểu trong nhóm")
+        month_cells = ""
+        for m in months:
+            m_val = detail_agg[
+                (detail_agg["doi_tac"] == dt) & (detail_agg["thang_so"] == m)
+            ]["tien_thuc_thu"].sum()
+            col_totals[m] += m_val
+            month_cells += (
+                f"<td style='text-align:right;padding:6px 10px;"
+                f"border-bottom:1px solid {_LINE};"
+                f"font-variant-numeric:tabular-nums;font-size:0.76rem;'>"
+                f"{'—' if m_val == 0 else f'{m_val/1e9:.2f}'}</td>"
+            )
 
-        top_doi_tac = (
-            df.groupby(["doi_tac", "nhom_doi_tac"], as_index=False)["tien_thuc_thu"].sum()
-            .sort_values("tien_thuc_thu", ascending=False)
-            .head(10)
+        table_rows += (
+            f"<tr>"
+            f"<td style='text-align:left;padding:6px 10px 6px 18px;"
+            f"border-bottom:1px solid {_LINE};font-size:0.78rem;'>{dt}</td>"
+            f"{month_cells}"
+            f"<td style='text-align:right;padding:6px 10px;border-bottom:1px solid {_LINE};"
+            f"font-weight:700;font-size:0.78rem;font-variant-numeric:tabular-nums;'>"
+            f"{lk/1e9:.2f}</td>"
+            f"</tr>"
         )
-        top_doi_tac["DT lũy kế"] = (top_doi_tac["tien_thuc_thu"] / 1e9).apply(lambda v: f"{v:.2f} tỷ")
-        st.dataframe(
-            top_doi_tac[["doi_tac", "nhom_doi_tac", "DT lũy kế"]].rename(columns={
-                "doi_tac": "Đối tác / sản phẩm",
-                "nhom_doi_tac": "Nhóm",
-            }),
-            hide_index=True,
-            use_container_width=True,
-        )
+
+    tot_month_cells = "".join(
+        f"<td style='text-align:right;padding:7px 10px;font-weight:800;"
+        f"font-variant-numeric:tabular-nums;font-size:0.78rem;'>"
+        f"{col_totals[m]/1e9:.2f}</td>"
+        for m in months
+    )
+    tot_s = (
+        f"font-weight:800;border-top:2px solid {_BLUE};border-bottom:none;"
+        f"background:{_BLUE4};padding:7px 10px;font-variant-numeric:tabular-nums;"
+    )
+    table_rows += (
+        f"<tr style='background:{_BLUE4};'>"
+        f"<td style='text-align:left;{tot_s}font-size:0.78rem;color:{_BLUE};'>TỔNG CỘNG</td>"
+        f"{tot_month_cells}"
+        f"<td style='text-align:right;{tot_s}font-size:0.78rem;color:{_BLUE};'>"
+        f"{col_total_lk/1e9:.2f}</td>"
+        f"</tr>"
+    )
+
+    st.markdown(
+        f'<div style="overflow-x:auto;">'
+        f'<table style="width:100%;border-collapse:collapse;">'
+        f'<thead><tr>'
+        f'<th style="{th_s}text-align:left;min-width:200px;">Đối tác</th>'
+        f'{month_headers}'
+        f'<th style="{th_s}text-align:right;">Lũy kế</th>'
+        f'</tr></thead>'
+        f'<tbody>{table_rows}</tbody>'
+        f'</table></div>',
+        unsafe_allow_html=True,
+    )
 

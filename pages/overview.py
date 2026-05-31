@@ -83,15 +83,19 @@ def render_overview_page() -> None:
 
     # ── KPI strip ─────────────────────────────────────────────────────────────
     _total_cy = tong_cy + _bhs_total_cy
+    _total_py = tong_py + _bhs_total_py
+    _total_yoy_pct   = (_total_cy - _total_py) / abs(_total_py) * 100 if _total_py else 0
+    _total_yoy_arrow = "▲" if _total_yoy_pct >= 0 else "▼"
+    _total_yoy_color = _POS if _total_yoy_pct >= 0 else _NEG
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.markdown(kpi_card(
             label=f"DT lũy kế {current_year}",
-            value=f"{tong_cy / 1e9:,.2f} <span style='font-size:0.9rem;color:{_MUTED};font-weight:600;'>tỷ</span>",
-            delta_str=f"{yoy_arrow} {yoy_pct:+.1f}% YoY",
-            delta_color=yoy_color,
+            value=f"{_total_cy / 1e9:,.2f} <span style='font-size:0.9rem;color:{_MUTED};font-weight:600;'>tỷ</span>",
+            delta_str=f"{_total_yoy_arrow} {_total_yoy_pct:+.1f}% YoY",
+            delta_color=_total_yoy_color,
             accent_color=_BLUE,
-            subtitle=f"Cùng kỳ {prev_year}: {tong_py / 1e9:,.2f} tỷ",
+            subtitle=f"Cùng kỳ {prev_year}: {_total_py / 1e9:,.2f} tỷ",
         ), unsafe_allow_html=True)
     with c2:
         st.markdown(kpi_card(
@@ -132,10 +136,7 @@ def render_overview_page() -> None:
             ), unsafe_allow_html=True)
 
     # ── Section 1: Cơ cấu doanh thu ──────────────────────────────────────────
-    section_head(
-        f"Cơ cấu doanh thu lũy kế {current_year}",
-        f"{tong_cy / 1e9:,.2f} TỶ ĐỒNG",
-    )
+    section_head(f"Cơ cấu doanh thu lũy kế {current_year}")
 
     col_bar, col_donut = st.columns([1.4, 1])
 
@@ -157,6 +158,7 @@ def render_overview_page() -> None:
             y=alt.Y("nhom_doi_tac:N", title=None, sort=nhom_order,
                     axis=alt.Axis(labelFontSize=11, labelColor=_INK)),
             x=alt.X("tien_thuc_thu:Q", title="Doanh thu (VND)",
+                    scale=alt.Scale(domainMax=int(rev_nhom["tien_thuc_thu"].max() * 1.35)),
                     axis=alt.Axis(format="~s", labelFontSize=10, labelColor=_MUTED)),
             color=alt.Color("_color:N", scale=None, legend=None),
             tooltip=[
@@ -165,7 +167,7 @@ def render_overview_page() -> None:
             ],
         )
         bars = base.mark_bar(cornerRadiusTopRight=3, cornerRadiusBottomRight=3)
-        text = base.mark_text(align="left", dx=4, fontSize=10, color=_INK).encode(
+        text = base.mark_text(align="left", dx=4, fontSize=10, color=_INK, clip=False).encode(
             text="label_b:N"
         )
         st.altair_chart(
@@ -209,10 +211,7 @@ def render_overview_page() -> None:
         )
 
     # ── Section 2: Phòng Bảo hiểm số ─────────────────────────────────────────
-    section_head(
-        "Phòng Bảo hiểm số — phân rã theo kênh",
-        f"{_bhs_total_cy / 1e9:,.2f} TỶ · {_bhs_yoy_arrow} {_bhs_yoy_pct:+.1f}%" if _bhs_total_cy else "Chưa có dữ liệu",
-    )
+    section_head("Phòng Bảo hiểm số — phân rã theo kênh")
 
     if bhs_cy.empty:
         st.warning("Chưa có dữ liệu BHS — chạy extract_manual_data.py và upload file Excel.")
@@ -315,53 +314,10 @@ def render_overview_page() -> None:
                 unsafe_allow_html=True,
             )
 
-    # ── Section 3: Telesale & Cổng thanh toán ─────────────────────────────────
-    section_head("Telesale & Cổng thanh toán", "HIỆU QUẢ CHUYỂN ĐỔI")
+    # ── Section 3: Cổng thanh toán ────────────────────────────────────────────
+    section_head("Cổng thanh toán")
 
-    col_tel, col_gw_bar, col_gw_tbl = st.columns(3)
-
-    # Telesale
-    tel_cy = telesale_df[telesale_df["nam"] == current_year] if not telesale_df.empty else pd.DataFrame()
-    with col_tel:
-        if tel_cy.empty:
-            st.warning("Chưa có dữ liệu Telesale — chạy extract_manual_data.py.")
-        else:
-            _leads  = int(tel_cy["leads"].sum())
-            _buyers = int(tel_cy["buyers"].sum())
-            _rev_b  = tel_cy["doanh_thu"].sum() / 1e9
-            _rate   = _buyers / _leads * 100 if _leads else 0
-
-            _chart_title("Phễu chuyển đổi Telesale")
-            _chart_sub("Lũy kế: leads → mua → doanh số")
-            funnel_df = pd.DataFrame({
-                "Bước": ["Leads chuyển", "KH mua BH", "Doanh số (tỷ)"],
-                "Giá trị": [_leads, _buyers, _rev_b * 1000],
-                "_color": [_BLUE4, _BLUE2, _BLUE],
-            })
-            funnel_order = funnel_df["Bước"].tolist()
-            funnel_chart = (
-                alt.Chart(funnel_df)
-                .mark_bar(cornerRadiusTopRight=3, cornerRadiusBottomRight=3)
-                .encode(
-                    y=alt.Y("Bước:N", title=None, sort=funnel_order,
-                            axis=alt.Axis(labelFontSize=11, labelColor=_INK)),
-                    x=alt.X("Giá trị:Q", title=None, scale=alt.Scale(type="log"),
-                            axis=alt.Axis(labelFontSize=9, labelColor=_MUTED)),
-                    color=alt.Color("_color:N", scale=None, legend=None),
-                    tooltip=[alt.Tooltip("Bước:N"), alt.Tooltip("Giá trị:Q", format=",.0f")],
-                )
-                .properties(height=200)
-            )
-            st.altair_chart(funnel_chart.configure_view(strokeWidth=0), width='stretch')
-            st.markdown(
-                f'<div style="display:flex;justify-content:space-between;'
-                f'margin-top:10px;padding-top:10px;border-top:1px solid {_LINE};">'
-                f'<span style="font-size:0.72rem;color:{_MUTED};">Tỷ lệ chuyển đổi LK</span>'
-                f'<span style="font-size:1.05rem;font-weight:700;color:{_POS};">'
-                f'{_rate:.2f}%</span>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
+    col_gw_bar, col_gw_tbl = st.columns(2)
 
     # Gateway
     gw_cy = gateway_df[gateway_df["nam"] == current_year] if not gateway_df.empty else pd.DataFrame()

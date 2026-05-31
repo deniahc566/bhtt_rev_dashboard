@@ -210,7 +210,7 @@ st.markdown(
     f'<div style="font-size:0.67rem;font-weight:700;letter-spacing:0.22em;text-transform:uppercase;'
     f'color:{_BLUE};margin-bottom:6px;">VietinBank Insurance · Ban Bảo hiểm Trực tuyến</div>'
     f'<h1 style="font-size:2.0rem;font-weight:600;color:{_INK};letter-spacing:-0.02em;'
-    f'margin:0;line-height:1.05;">Báo cáo <em style="font-style:italic;color:{_BLUE};">Doanh số</em>'
+    f'margin:0;line-height:1.05;">Báo cáo <strong style="font-style:normal;font-weight:700;color:{_BLUE};">Doanh số</strong>'
     f' Ban BHTT</h1>'
     f'</div>'
     f'<div style="text-align:right;">'
