@@ -278,6 +278,7 @@ def render_detail_page() -> None:
     section_head("Chi tiết từng đối tác theo tháng")
 
     months = sorted(df["thang_so"].unique())
+
     detail_agg = (
         df.groupby(["nhom_doi_tac", "doi_tac", "thang_so"], as_index=False)["tien_thuc_thu"].sum()
     )
@@ -285,8 +286,25 @@ def render_detail_page() -> None:
         df.groupby(["nhom_doi_tac", "doi_tac"], as_index=False)["tien_thuc_thu"]
         .sum()
         .rename(columns={"tien_thuc_thu": "lk"})
-        .sort_values(["nhom_doi_tac", "lk"], ascending=[True, False])
     )
+    # Sắp xếp: nhóm asc, "khác" luôn cuối mỗi nhóm, còn lại lũy kế desc
+    detail_lk["_is_khac"] = detail_lk["doi_tac"].str.lower().str.contains("khác|khac", na=False)
+    detail_lk = detail_lk.sort_values(
+        ["nhom_doi_tac", "_is_khac", "lk"], ascending=[True, True, False]
+    ).drop(columns="_is_khac")
+
+    # Product breakdown cho các đối tác có tên sản phẩm
+    _prod_df = df[df["product_group"].str.strip() != ""]
+    prod_lk = (
+        _prod_df.groupby(["doi_tac", "product_group"], as_index=False)["tien_thuc_thu"]
+        .sum()
+        .rename(columns={"tien_thuc_thu": "plk"})
+        .sort_values(["doi_tac", "plk"], ascending=[True, False])
+    )
+    prod_agg = (
+        _prod_df.groupby(["doi_tac", "product_group", "thang_so"], as_index=False)["tien_thuc_thu"].sum()
+    )
+    dt_with_products = set(prod_lk["doi_tac"].unique())
 
     th_s = (
         f"font-size:0.64rem;font-weight:700;text-transform:uppercase;"
@@ -302,11 +320,12 @@ def render_detail_page() -> None:
     col_totals   = {m: 0.0 for m in months}
     col_total_lk = 0.0
 
-    for _, row in detail_lk.iterrows():
-        nhom = row["nhom_doi_tac"]
-        dt   = row["doi_tac"]
-        lk   = row["lk"]
+    for idx, row in enumerate(detail_lk.itertuples(index=False)):
+        nhom = row.nhom_doi_tac
+        dt   = row.doi_tac
+        lk   = row.lk
         col_total_lk += lk
+        uid  = f"dt{idx}"
 
         if nhom != current_nhom:
             current_nhom = nhom
@@ -334,16 +353,57 @@ def render_detail_page() -> None:
                 f"{'—' if m_val == 0 else f'{m_val/1e9:.2f}'}</td>"
             )
 
+        has_prod = dt in dt_with_products
+        if has_prod:
+            name_cell = (
+                f"<td style='text-align:left;padding:6px 10px 6px 14px;"
+                f"border-bottom:1px solid {_LINE};font-size:0.78rem;'>"
+                f"<span onclick=\"_tprod('{uid}')\" "
+                f"style='cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:5px;'>"
+                f"<span id='ar-{uid}' style='font-size:0.68rem;color:{_BLUE};'>▸</span>"
+                f"{dt}</span></td>"
+            )
+        else:
+            name_cell = (
+                f"<td style='text-align:left;padding:6px 10px 6px 18px;"
+                f"border-bottom:1px solid {_LINE};font-size:0.78rem;'>{dt}</td>"
+            )
+
         table_rows += (
-            f"<tr>"
-            f"<td style='text-align:left;padding:6px 10px 6px 18px;"
-            f"border-bottom:1px solid {_LINE};font-size:0.78rem;'>{dt}</td>"
-            f"{month_cells}"
+            f"<tr>{name_cell}{month_cells}"
             f"<td style='text-align:right;padding:6px 10px;border-bottom:1px solid {_LINE};"
             f"font-weight:700;font-size:0.78rem;font-variant-numeric:tabular-nums;'>"
-            f"{lk/1e9:.2f}</td>"
-            f"</tr>"
+            f"{lk/1e9:.2f}</td></tr>"
         )
+
+        # Các hàng sản phẩm (ẩn mặc định)
+        if has_prod:
+            prods = prod_lk[prod_lk["doi_tac"] == dt]
+            for _, pr in prods.iterrows():
+                pg   = pr["product_group"]
+                plk  = pr["plk"]
+                prod_cells = ""
+                for m in months:
+                    pv = prod_agg[
+                        (prod_agg["doi_tac"] == dt) & (prod_agg["product_group"] == pg)
+                        & (prod_agg["thang_so"] == m)
+                    ]["tien_thuc_thu"].sum()
+                    prod_cells += (
+                        f"<td style='text-align:right;padding:4px 10px;"
+                        f"border-bottom:1px solid {_LINE};"
+                        f"font-variant-numeric:tabular-nums;font-size:0.73rem;color:{_MUTED};'>"
+                        f"{'—' if pv == 0 else f'{pv/1e9:.2f}'}</td>"
+                    )
+                table_rows += (
+                    f"<tr class='pd-{uid}' style='display:none;background:#f8faff;'>"
+                    f"<td style='text-align:left;padding:4px 10px 4px 32px;"
+                    f"border-bottom:1px solid {_LINE};font-size:0.73rem;color:{_MUTED};'>"
+                    f"↳ {pg}</td>"
+                    f"{prod_cells}"
+                    f"<td style='text-align:right;padding:4px 10px;border-bottom:1px solid {_LINE};"
+                    f"font-size:0.73rem;color:{_MUTED};font-variant-numeric:tabular-nums;'>"
+                    f"{plk/1e9:.2f}</td></tr>"
+                )
 
     tot_month_cells = "".join(
         f"<td style='text-align:right;padding:7px 10px;font-weight:800;"
@@ -364,7 +424,18 @@ def render_detail_page() -> None:
         f"</tr>"
     )
 
+    toggle_script = (
+        "<script>"
+        "function _tprod(id){"
+        "var rs=document.querySelectorAll('.pd-'+id);"
+        "var ar=document.getElementById('ar-'+id);"
+        "var show=rs.length&&rs[0].style.display==='none';"
+        "rs.forEach(function(r){r.style.display=show?'table-row':'none';});"
+        "if(ar)ar.textContent=show?'▾':'▸';}"
+        "</script>"
+    )
     st.markdown(
+        toggle_script +
         f'<div style="overflow-x:auto;">'
         f'<table style="width:100%;border-collapse:collapse;">'
         f'<thead><tr>'
