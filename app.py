@@ -204,26 +204,18 @@ _now = datetime.date.today()
 _period_label = f"T{_now.month} / {_now.year}"
 
 st.markdown(
-    f'<div style="display:flex;justify-content:space-between;align-items:flex-end;'
-    f'border-bottom:2.5px solid {_INK};padding-bottom:18px;margin-bottom:4px;flex-wrap:wrap;gap:12px;">'
-    f'<div>'
+    f'<div style="border-bottom:2.5px solid {_INK};padding-bottom:18px;margin-bottom:4px;">'
     f'<div style="font-size:0.67rem;font-weight:700;letter-spacing:0.22em;text-transform:uppercase;'
     f'color:{_BLUE};margin-bottom:6px;">VietinBank Insurance · Ban Bảo hiểm Trực tuyến</div>'
     f'<h1 style="font-size:2.0rem;font-weight:600;color:{_INK};letter-spacing:-0.02em;'
     f'margin:0;line-height:1.05;">Báo cáo <strong style="font-style:normal;font-weight:700;color:{_BLUE};">Doanh số</strong>'
     f' Ban BHTT</h1>'
-    f'</div>'
-    f'<div style="text-align:right;">'
-    f'<div style="font-size:1.6rem;font-weight:600;color:{_INK};line-height:1;">{_period_label}</div>'
-    f'<div style="font-size:0.67rem;letter-spacing:0.14em;text-transform:uppercase;'
-    f'color:#6c6754;margin-top:5px;">Lũy kế T1–T{_now.month} · So cùng kỳ {_now.year - 1}</div>'
-    f'</div>'
     f'</div>',
     unsafe_allow_html=True,
 )
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab1, tab2 = st.tabs(["① Tổng quan doanh số", "② Chi tiết đối tác"])
+tab1, tab2 = st.tabs(["Tổng quan doanh số", "Chi tiết đối tác"])
 
 with tab1:
     render_overview_page()
