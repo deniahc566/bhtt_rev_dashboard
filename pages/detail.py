@@ -492,25 +492,25 @@ def render_detail_page() -> None:
         st.info(f"Không có dữ liệu ngày {sel_date.strftime('%d/%m/%Y')} cho lựa chọn này.")
     else:
         show_doi_tac_col = sel_dt == "(Tất cả)"
-        group_cols = ["ngay_ban_hang", "doi_tac", "product_group"] if show_doi_tac_col \
-                     else ["ngay_ban_hang", "product_group"]
+        group_cols = ["ngay_ban_hang", "nhom_doi_tac", "doi_tac", "product_group"] if show_doi_tac_col \
+                     else ["ngay_ban_hang", "nhom_doi_tac", "product_group"]
         agg_day = (
             day_df.groupby(group_cols, as_index=False)
             .agg(so_don=("so_don_cap_moi", "sum"), doanh_thu=("tien_thuc_thu", "sum"))
-            .sort_values(["ngay_ban_hang"] + (["doi_tac"] if show_doi_tac_col else []),
+            .sort_values(["ngay_ban_hang", "nhom_doi_tac"] + (["doi_tac"] if show_doi_tac_col else []),
                          ascending=True)
         )
         agg_day["Ngày"] = agg_day["ngay_ban_hang"].dt.strftime("%d/%m/%Y")
         agg_day["Doanh thu"] = agg_day["doanh_thu"].map(fmt_currency)
         agg_day["Số đơn"] = agg_day["so_don"].astype(int)
 
-        rename = {"product_group": "Sản phẩm"}
+        rename = {"nhom_doi_tac": "Nhóm đối tác", "product_group": "Sản phẩm"}
         if show_doi_tac_col:
             rename["doi_tac"] = "Đối tác"
         display_cols = (
-            ["Ngày", "Đối tác", "Sản phẩm", "Số đơn", "Doanh thu"]
+            ["Ngày", "Nhóm đối tác", "Đối tác", "Sản phẩm", "Số đơn", "Doanh thu"]
             if show_doi_tac_col
-            else ["Ngày", "Sản phẩm", "Số đơn", "Doanh thu"]
+            else ["Ngày", "Nhóm đối tác", "Sản phẩm", "Số đơn", "Doanh thu"]
         )
         agg_day = agg_day.rename(columns=rename)[display_cols]
 
