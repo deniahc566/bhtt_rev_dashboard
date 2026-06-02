@@ -1,4 +1,5 @@
 import sys
+import json as _json
 from pathlib import Path
 _HERE = Path(__file__).parent.parent
 if str(_HERE) not in sys.path:
@@ -9,6 +10,7 @@ if str(_HERE.parent) not in sys.path:
 import pandas as pd
 import altair as alt
 import streamlit as st
+import streamlit.components.v1 as _cmp
 
 from data_loader import load_partner_data
 from ui_helpers import (
@@ -451,81 +453,453 @@ def render_detail_page() -> None:
     # ── Section 4: Chi tiết theo ngày ─────────────────────────────────────────
     section_head("Chi tiết theo ngày")
 
-    # Ngày mặc định = T-1 so với ngày có dữ liệu cuối cùng
-    _last_date    = df["ngay_ban_hang"].dt.date.max()
-    _default_date = _last_date - pd.Timedelta(days=1)
-    # Nếu T-1 không có dữ liệu thì fallback về ngày cuối cùng
-    _available_dates = set(df["ngay_ban_hang"].dt.date.unique())
-    if _default_date not in _available_dates:
-        _default_date = _last_date
+    # Pre-aggregate by (date, nhom_doi_tac, doi_tac)
+    _day_agg = (
+        df.groupby(
+            [df["ngay_ban_hang"].dt.strftime("%Y-%m-%d"), "nhom_doi_tac", "doi_tac"],
+            as_index=False,
+        )
+        .agg(rev=("tien_thuc_thu", "sum"), don=("so_don_cap_moi", "sum"))
+        .rename(columns={"ngay_ban_hang": "date"})
+        .sort_values("date")
+    )
 
-    f_col1, f_col2, f_col3 = st.columns([1, 1, 1])
-    with f_col1:
-        nhom_options = ["(Tất cả)"] + sorted(df["nhom_doi_tac"].dropna().unique().tolist())
-        sel_nhom = st.selectbox("Nhóm đối tác", nhom_options, key="day_nhom")
-    with f_col2:
-        if sel_nhom == "(Tất cả)":
-            df_filtered_nhom = df
-            dt_options = ["(Tất cả)"] + sorted(df["doi_tac"].dropna().unique().tolist())
-        else:
-            df_filtered_nhom = df[df["nhom_doi_tac"] == sel_nhom]
-            dt_options = ["(Tất cả)"] + sorted(df_filtered_nhom["doi_tac"].dropna().unique().tolist())
-        sel_dt = st.selectbox("Tên đối tác", dt_options, key="day_dt")
-    with f_col3:
-        sel_date = st.date_input(
-            "Ngày",
-            value=_default_date,
-            min_value=df["ngay_ban_hang"].dt.date.min(),
-            max_value=_last_date,
-            key="day_date",
-            format="DD/MM/YYYY",
+    # Quick-month buttons: unique YYYY-MM from data
+    _months_in_data = sorted(_day_agg["date"].str[:7].unique().tolist())
+
+    # Default date range = T-1 (last day with data), showing that month
+    _last_date_s = _day_agg["date"].max()   # "YYYY-MM-DD"
+    _min_date_s  = _day_agg["date"].min()
+
+    # Build nhom list and nhom→doi_tac mapping
+    _nhom_list = sorted(_day_agg["nhom_doi_tac"].dropna().unique().tolist())
+    _nhom_to_dt: dict = {}
+    for _nhom in _nhom_list:
+        _nhom_to_dt[_nhom] = sorted(
+            _day_agg[_day_agg["nhom_doi_tac"] == _nhom]["doi_tac"].dropna().unique().tolist()
         )
 
-    # Áp filter
-    if sel_dt != "(Tất cả)":
-        day_df = df_filtered_nhom[df_filtered_nhom["doi_tac"] == sel_dt].copy()
-    else:
-        day_df = df_filtered_nhom.copy()
-    day_df = day_df[day_df["ngay_ban_hang"].dt.date == sel_date]
+    # Serialize to JSON for JS injection
+    _rows_json      = _json.dumps(_day_agg.to_dict(orient="records"), ensure_ascii=False)
+    _nhom_list_json = _json.dumps(_nhom_list, ensure_ascii=False)
+    _nhom_to_dt_json= _json.dumps(_nhom_to_dt, ensure_ascii=False)
+    _months_json    = _json.dumps(_months_in_data, ensure_ascii=False)
 
-    if day_df.empty:
-        st.info(f"Không có dữ liệu ngày {sel_date.strftime('%d/%m/%Y')} cho lựa chọn này.")
-    else:
-        show_doi_tac_col = sel_dt == "(Tất cả)"
-        group_cols = ["ngay_ban_hang", "nhom_doi_tac", "doi_tac", "product_group"] if show_doi_tac_col \
-                     else ["ngay_ban_hang", "nhom_doi_tac", "product_group"]
-        agg_day = (
-            day_df.groupby(group_cols, as_index=False)
-            .agg(so_don=("so_don_cap_moi", "sum"), doanh_thu=("tien_thuc_thu", "sum"))
-            .sort_values(["ngay_ban_hang", "nhom_doi_tac"] + (["doi_tac"] if show_doi_tac_col else []),
-                         ascending=True)
-        )
-        agg_day["Ngày"] = agg_day["ngay_ban_hang"].dt.strftime("%d/%m/%Y")
-        agg_day["Doanh thu"] = agg_day["doanh_thu"].map(fmt_currency)
-        agg_day["Số đơn"] = agg_day["so_don"].astype(int)
+    _HTML_TEMPLATE = """<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;color:#0d1a2e;background:#fff;padding:0 4px;}
 
-        rename = {"nhom_doi_tac": "Nhóm đối tác", "product_group": "Sản phẩm"}
-        if show_doi_tac_col:
-            rename["doi_tac"] = "Đối tác"
-        display_cols = (
-            ["Ngày", "Nhóm đối tác", "Đối tác", "Sản phẩm", "Số đơn", "Doanh thu"]
-            if show_doi_tac_col
-            else ["Ngày", "Nhóm đối tác", "Sản phẩm", "Số đơn", "Doanh thu"]
-        )
-        agg_day = agg_day.rename(columns=rename)[display_cols]
+/* Filter bar */
+.filter-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;padding:14px 16px;background:#f8fafd;border:1.5px solid #d0d8e4;border-radius:8px;margin-bottom:14px;}
+.filter-group{display:flex;flex-direction:column;gap:4px;}
+.filter-group label{font-size:10px;font-weight:700;letter-spacing:0.09em;text-transform:uppercase;color:#64748b;}
+.filter-group input[type=date]{height:32px;border:1.5px solid #d0d8e4;border-radius:6px;padding:0 8px;font-size:12px;color:#0d1a2e;outline:none;min-width:120px;}
+.filter-group input[type=date]:focus{border-color:#1558d6;}
+.filter-group select{height:32px;border:1.5px solid #d0d8e4;border-radius:6px;padding:0 8px;font-size:12px;color:#0d1a2e;outline:none;background:#fff;min-width:140px;}
+.filter-group select:focus{border-color:#1558d6;}
 
-        _total_don = int(day_df["so_don_cap_moi"].sum())
-        _total_rev = day_df["tien_thuc_thu"].sum()
-        st.markdown(
-            f'<div style="display:flex;gap:24px;margin-bottom:10px;'
-            f'padding:10px 14px;background:#eef3ff;border-radius:6px;">'
-            f'<span style="font-size:0.78rem;color:{_MUTED};">Tổng đơn: '
-            f'<b style="color:{_INK};">{_total_don:,}</b></span>'
-            f'<span style="font-size:0.78rem;color:{_MUTED};">Tổng doanh thu: '
-            f'<b style="color:{_BLUE};">{fmt_currency(_total_rev)}</b></span>'
-            f'<span style="font-size:0.78rem;color:{_MUTED};">{len(agg_day):,} dòng</span>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-        st.dataframe(agg_day, hide_index=True, width="stretch")
+/* Quick month buttons */
+.month-btns{display:flex;gap:5px;flex-wrap:wrap;align-self:flex-end;}
+.mbtn{height:32px;padding:0 11px;border:1.5px solid #d0d8e4;border-radius:6px;background:#fff;font-size:11px;font-weight:700;color:#64748b;cursor:pointer;white-space:nowrap;}
+.mbtn:hover{border-color:#1558d6;color:#1558d6;}
+.mbtn.active{background:#1558d6;border-color:#1558d6;color:#fff;}
+
+/* Summary pills */
+.pills{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:5px 14px;border-radius:20px;font-size:12px;background:#eef3ff;border:1px solid #c5d8fb;}
+.pill .plabel{color:#64748b;font-weight:600;}
+.pill .pval{color:#1558d6;font-weight:700;}
+.pill.green .pval{color:#16a34a;}
+
+/* Charts */
+.charts-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;}
+.chart-card{background:#fff;border:1.5px solid #d0d8e4;border-radius:8px;padding:14px 16px;}
+.chart-card h4{font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#0d1a2e;margin-bottom:10px;}
+
+/* Table */
+.tbl-wrap{border:1.5px solid #d0d8e4;border-radius:8px;overflow:hidden;}
+.tbl-wrap table{width:100%;border-collapse:collapse;}
+.tbl-wrap thead th{background:#f1f5fb;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#64748b;padding:8px 12px;border-bottom:1.5px solid #d0d8e4;white-space:nowrap;}
+.tbl-wrap tbody tr:hover{background:#f8fafd;}
+.tbl-wrap tbody td{padding:7px 12px;border-bottom:1px solid #e8edf5;font-size:12px;vertical-align:middle;}
+.tbl-wrap tbody tr:last-child td{border-bottom:none;}
+.tbl-scroll{max-height:300px;overflow-y:auto;}
+td.num{text-align:right;font-variant-numeric:tabular-nums;}
+.pill-up{display:inline-block;background:#dcfce7;color:#16a34a;font-weight:700;font-size:10px;padding:2px 6px;border-radius:10px;}
+.pill-dn{display:inline-block;background:#fee2e2;color:#dc2626;font-weight:700;font-size:10px;padding:2px 6px;border-radius:10px;}
+.pill-eq{display:inline-block;background:#f1f5f9;color:#64748b;font-weight:700;font-size:10px;padding:2px 6px;border-radius:10px;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const ALL_ROWS   = __ROWS_JSON__;
+const NHOM_LIST  = __NHOM_LIST_JSON__;
+const NHOM_TO_DT = __NHOM_TO_DT_JSON__;
+const ALL_MONTHS = __MONTHS_JSON__;
+const LAST_DATE  = "__LAST_DATE__";
+const MIN_DATE   = "__MIN_DATE__";
+
+// ── State ────────────────────────────────────────────────────────────
+let state = {
+  dateFrom: LAST_DATE,
+  dateTo:   LAST_DATE,
+  nhom:     "",
+  dt:       "",
+  activeMonth: null,
+};
+
+// ── Helpers ──────────────────────────────────────────────────────────
+function fmtRev(v) {
+  if (v === 0) return "0 đ";
+  const a = Math.abs(v);
+  if (a >= 1e9)  return (v / 1e9).toLocaleString("vi-VN", {minimumFractionDigits:2,maximumFractionDigits:2}) + " tỷ";
+  if (a >= 1e6)  return (v / 1e6).toLocaleString("vi-VN", {minimumFractionDigits:1,maximumFractionDigits:1}) + " triệu";
+  if (a >= 1e3)  return (v / 1e3).toLocaleString("vi-VN", {minimumFractionDigits:0,maximumFractionDigits:0}) + " nghìn";
+  return v.toLocaleString("vi-VN") + " đ";
+}
+function fmtRevM(v) { // always in triệu for axis labels
+  if (v === 0) return "0";
+  const a = Math.abs(v);
+  if (a >= 1e9)  return (v / 1e9).toFixed(2) + " tỷ";
+  if (a >= 1e6)  return (v / 1e6).toFixed(1) + " tr";
+  if (a >= 1e3)  return (v / 1e3).toFixed(0) + " k";
+  return v.toString();
+}
+function fmtDate(s) { // "YYYY-MM-DD" → "DD/MM"
+  if (!s) return "";
+  const [y,m,d] = s.split("-");
+  return d + "/" + m;
+}
+function fmtDateFull(s) {
+  if (!s) return "";
+  const [y,m,d] = s.split("-");
+  return d + "/" + m + "/" + y;
+}
+function pctStr(a, b) {
+  if (b === 0) return null;
+  return ((a - b) / Math.abs(b) * 100).toFixed(1);
+}
+
+// ── Filter rows ───────────────────────────────────────────────────────
+function filteredRows() {
+  return ALL_ROWS.filter(r => {
+    if (r.date < state.dateFrom || r.date > state.dateTo) return false;
+    if (state.nhom && r.nhom_doi_tac !== state.nhom) return false;
+    if (state.dt   && r.doi_tac      !== state.dt)   return false;
+    return true;
+  });
+}
+
+// Aggregate filtered rows by date
+function byDate(rows) {
+  const map = {};
+  rows.forEach(r => {
+    if (!map[r.date]) map[r.date] = {date: r.date, rev: 0, don: 0};
+    map[r.date].rev += r.rev;
+    map[r.date].don += r.don;
+  });
+  return Object.values(map).sort((a,b) => a.date.localeCompare(b.date));
+}
+
+// ── Charts ────────────────────────────────────────────────────────────
+let chartRev = null, chartDon = null;
+
+function drawCharts(daily) {
+  const labels = daily.map(d => fmtDate(d.date));
+  const revs   = daily.map(d => d.rev);
+  const dons   = daily.map(d => d.don);
+  const avgRev = revs.length ? revs.reduce((a,b)=>a+b,0)/revs.length : 0;
+  const avgDon = dons.length ? dons.reduce((a,b)=>a+b,0)/dons.length : 0;
+  const avgRevArr = revs.map(() => avgRev);
+  const avgDonArr = dons.map(() => avgDon);
+
+  // Rev chart
+  if (chartRev) chartRev.destroy();
+  const ctxR = document.getElementById("chartRev").getContext("2d");
+  chartRev = new Chart(ctxR, {
+    data: {
+      labels,
+      datasets: [
+        {
+          type: "bar",
+          label: "Doanh thu",
+          data: revs,
+          backgroundColor: "rgba(21,88,214,0.65)",
+          borderRadius: 3,
+          yAxisID: "y",
+        },
+        {
+          type: "line",
+          label: "TB/ngày",
+          data: avgRevArr,
+          borderColor: "#dc2626",
+          borderWidth: 1.5,
+          borderDash: [4,3],
+          pointRadius: 0,
+          tension: 0,
+          yAxisID: "y",
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: {
+        legend: {display: false},
+        tooltip: {
+          callbacks: {
+            label: ctx => ctx.dataset.label + ": " + fmtRev(ctx.parsed.y)
+          }
+        }
+      },
+      scales: {
+        x: {grid:{display:false}, ticks:{font:{size:10}, maxRotation:45, minRotation:0}},
+        y: {
+          ticks:{font:{size:10}, callback: v => fmtRevM(v)},
+          grid:{color:"#e8edf5"}
+        }
+      }
+    }
+  });
+
+  // Don chart
+  if (chartDon) chartDon.destroy();
+  const ctxD = document.getElementById("chartDon").getContext("2d");
+  chartDon = new Chart(ctxD, {
+    data: {
+      labels,
+      datasets: [
+        {
+          type: "bar",
+          label: "Số đơn",
+          data: dons,
+          backgroundColor: "rgba(14,165,233,0.65)",
+          borderRadius: 3,
+        },
+        {
+          type: "line",
+          label: "TB/ngày",
+          data: avgDonArr,
+          borderColor: "#dc2626",
+          borderWidth: 1.5,
+          borderDash: [4,3],
+          pointRadius: 0,
+          tension: 0,
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: {legend:{display:false}, tooltip:{callbacks:{label:ctx=>ctx.dataset.label+": "+ctx.parsed.y.toLocaleString("vi-VN")}}},
+      scales: {
+        x: {grid:{display:false}, ticks:{font:{size:10}, maxRotation:45, minRotation:0}},
+        y: {ticks:{font:{size:10}}, grid:{color:"#e8edf5"}}
+      }
+    }
+  });
+}
+
+// ── Render ────────────────────────────────────────────────────────────
+function render() {
+  const rows  = filteredRows();
+  const daily = byDate(rows);
+
+  // Totals
+  const totRev = rows.reduce((s,r)=>s+r.rev, 0);
+  const totDon = rows.reduce((s,r)=>s+r.don, 0);
+  const nDays  = daily.length;
+  const avgDay = nDays ? totRev / nDays : 0;
+
+  // Pills HTML
+  document.getElementById("pills").innerHTML =
+    '<div class="pill"><span class="plabel">Tổng DT</span><span class="pval">' + fmtRev(totRev) + '</span></div>' +
+    '<div class="pill"><span class="plabel">Tổng đơn</span><span class="pval green" style="color:#16a34a">' + totDon.toLocaleString("vi-VN") + '</span></div>' +
+    '<div class="pill"><span class="plabel">TB/ngày</span><span class="pval">' + fmtRev(avgDay) + '</span></div>' +
+    '<div class="pill"><span class="plabel">' + nDays + ' ngày</span></div>';
+
+  // Charts
+  drawCharts(daily);
+
+  // Table: rows by date, sorted desc
+  const dailyDesc = [...daily].reverse();
+  const revByDate = {};
+  daily.forEach((d,i) => { revByDate[d.date] = {rev: d.rev, don: d.don, prev: i > 0 ? daily[i-1].rev : null}; });
+
+  let tbRows = "";
+  dailyDesc.forEach(d => {
+    const prev = revByDate[d.date].prev;
+    let cmpHtml = '<span class="pill-eq">—</span>';
+    if (prev !== null) {
+      const pct = pctStr(d.rev, prev);
+      if (pct !== null) {
+        if (parseFloat(pct) > 0)       cmpHtml = '<span class="pill-up">▲ +' + pct + '%</span>';
+        else if (parseFloat(pct) < 0)  cmpHtml = '<span class="pill-dn">▼ ' + pct + '%</span>';
+        else                            cmpHtml = '<span class="pill-eq">= 0%</span>';
+      }
+    }
+    const revPerDon = d.don > 0 ? fmtRev(d.rev / d.don) : "—";
+    tbRows +=
+      '<tr>' +
+      '<td>' + fmtDateFull(d.date) + '</td>' +
+      '<td class="num">' + fmtRev(d.rev) + '</td>' +
+      '<td class="num">' + d.don.toLocaleString("vi-VN") + '</td>' +
+      '<td class="num">' + revPerDon + '</td>' +
+      '<td style="text-align:center;">' + cmpHtml + '</td>' +
+      '</tr>';
+  });
+
+  document.getElementById("tbl-body").innerHTML = tbRows || '<tr><td colspan="5" style="text-align:center;color:#64748b;padding:16px;">Không có dữ liệu</td></tr>';
+}
+
+// ── Controls ──────────────────────────────────────────────────────────
+function buildDtOptions(nhom) {
+  const sel = document.getElementById("selDt");
+  const opts = nhom ? (NHOM_TO_DT[nhom] || []) : [...new Set(ALL_ROWS.map(r=>r.doi_tac))].sort();
+  sel.innerHTML = '<option value="">(Tất cả đối tác)</option>' +
+    opts.map(d => '<option value="'+d+'"'+(state.dt===d?' selected':'')+'>'+d+'</option>').join("");
+}
+
+function buildMonthBtns() {
+  const wrap = document.getElementById("monthBtns");
+  wrap.innerHTML = ALL_MONTHS.map(m => {
+    const [y, mo] = m.split("-");
+    const label = "T" + parseInt(mo) + "/" + y;
+    return '<button class="mbtn'+(state.activeMonth===m?' active':'')+'" data-month="'+m+'">'+label+'</button>';
+  }).join("");
+  wrap.querySelectorAll(".mbtn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const m = btn.dataset.month;
+      if (state.activeMonth === m) {
+        // deselect → restore full range
+        state.activeMonth = null;
+        state.dateFrom = MIN_DATE;
+        state.dateTo   = LAST_DATE;
+      } else {
+        state.activeMonth = m;
+        const [y, mo] = m.split("-");
+        const lastDay = new Date(parseInt(y), parseInt(mo), 0).getDate();
+        state.dateFrom = m + "-01";
+        state.dateTo   = m + "-" + String(lastDay).padStart(2,"0");
+      }
+      document.getElementById("inpFrom").value = state.dateFrom;
+      document.getElementById("inpTo").value   = state.dateTo;
+      buildMonthBtns();
+      render();
+    });
+  });
+}
+
+function init() {
+  // Set initial date range = last date only
+  state.dateFrom = LAST_DATE;
+  state.dateTo   = LAST_DATE;
+
+  const app = document.getElementById("app");
+  app.innerHTML = `
+    <div class="filter-bar">
+      <div class="filter-group">
+        <label>Từ ngày</label>
+        <input type="date" id="inpFrom" value="${state.dateFrom}" min="${MIN_DATE}" max="${LAST_DATE}">
+      </div>
+      <div class="filter-group">
+        <label>Đến ngày</label>
+        <input type="date" id="inpTo" value="${state.dateTo}" min="${MIN_DATE}" max="${LAST_DATE}">
+      </div>
+      <div class="filter-group">
+        <label>Tháng nhanh</label>
+        <div class="month-btns" id="monthBtns"></div>
+      </div>
+      <div class="filter-group">
+        <label>Nhóm đối tác</label>
+        <select id="selNhom">
+          <option value="">(Tất cả nhóm)</option>
+          ${NHOM_LIST.map(n=>'<option value="'+n+'">'+n+'</option>').join("")}
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Tên đối tác</label>
+        <select id="selDt"><option value="">(Tất cả đối tác)</option></select>
+      </div>
+    </div>
+
+    <div class="pills" id="pills"></div>
+
+    <div class="charts-row">
+      <div class="chart-card">
+        <h4>Doanh thu theo ngày</h4>
+        <div style="height:180px;"><canvas id="chartRev"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h4>Số đơn theo ngày</h4>
+        <div style="height:180px;"><canvas id="chartDon"></canvas></div>
+      </div>
+    </div>
+
+    <div class="tbl-wrap">
+      <div class="tbl-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Ngày</th>
+              <th style="text-align:right;">DT (tr.đ)</th>
+              <th style="text-align:right;">Số đơn</th>
+              <th style="text-align:right;">DT/đơn</th>
+              <th style="text-align:center;">So hôm trước</th>
+            </tr>
+          </thead>
+          <tbody id="tbl-body"></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  buildDtOptions("");
+  buildMonthBtns();
+
+  document.getElementById("inpFrom").addEventListener("change", e => {
+    state.dateFrom = e.target.value;
+    state.activeMonth = null;
+    buildMonthBtns();
+    render();
+  });
+  document.getElementById("inpTo").addEventListener("change", e => {
+    state.dateTo = e.target.value;
+    state.activeMonth = null;
+    buildMonthBtns();
+    render();
+  });
+  document.getElementById("selNhom").addEventListener("change", e => {
+    state.nhom = e.target.value;
+    state.dt   = "";
+    buildDtOptions(state.nhom);
+    render();
+  });
+  document.getElementById("selDt").addEventListener("change", e => {
+    state.dt = e.target.value;
+    render();
+  });
+
+  render();
+}
+
+init();
+</script>
+</body>
+</html>"""
+
+    _html = (
+        _HTML_TEMPLATE
+        .replace("__ROWS_JSON__",       _rows_json)
+        .replace("__NHOM_LIST_JSON__",  _nhom_list_json)
+        .replace("__NHOM_TO_DT_JSON__", _nhom_to_dt_json)
+        .replace("__MONTHS_JSON__",     _months_json)
+        .replace("__LAST_DATE__",       _last_date_s)
+        .replace("__MIN_DATE__",        _min_date_s)
+    )
+    _cmp.html(_html, height=940, scrolling=False)
 
