@@ -449,3 +449,67 @@ def render_detail_page() -> None:
         unsafe_allow_html=True,
     )
 
+    # ── Section 4: Chi tiết theo ngày ─────────────────────────────────────────
+    section_head("Chi tiết theo ngày")
+
+    # Filter cascading: nhóm → đối tác
+    nhom_options = ["(Tất cả)"] + sorted(df["nhom_doi_tac"].dropna().unique().tolist())
+    sel_nhom = st.selectbox("Nhóm đối tác", nhom_options, key="day_nhom")
+
+    if sel_nhom == "(Tất cả)":
+        dt_options = ["(Tất cả)"] + sorted(df["doi_tac"].dropna().unique().tolist())
+        df_filtered_nhom = df
+    else:
+        df_filtered_nhom = df[df["nhom_doi_tac"] == sel_nhom]
+        dt_options = ["(Tất cả)"] + sorted(df_filtered_nhom["doi_tac"].dropna().unique().tolist())
+
+    sel_dt = st.selectbox("Tên đối tác", dt_options, key="day_dt")
+
+    if sel_dt != "(Tất cả)":
+        day_df = df_filtered_nhom[df_filtered_nhom["doi_tac"] == sel_dt].copy()
+    else:
+        day_df = df_filtered_nhom.copy()
+
+    if day_df.empty:
+        st.info("Không có dữ liệu cho lựa chọn này.")
+    else:
+        # Aggregate by date + doi_tac + product_group
+        show_doi_tac_col = sel_dt == "(Tất cả)"
+        group_cols = ["ngay_ban_hang", "doi_tac", "product_group"] if show_doi_tac_col \
+                     else ["ngay_ban_hang", "product_group"]
+        agg_day = (
+            day_df.groupby(group_cols, as_index=False)
+            .agg(so_don=("so_don_cap_moi", "sum"), doanh_thu=("tien_thuc_thu", "sum"))
+            .sort_values(["ngay_ban_hang"] + (["doi_tac"] if show_doi_tac_col else []),
+                         ascending=True)
+        )
+        agg_day["Ngày"] = agg_day["ngay_ban_hang"].dt.strftime("%d/%m/%Y")
+        agg_day["Doanh thu (tỷ)"] = (agg_day["doanh_thu"] / 1e9).map(lambda v: f"{v:.4f}")
+        agg_day["Số đơn"] = agg_day["so_don"].astype(int)
+
+        rename = {"product_group": "Sản phẩm"}
+        if show_doi_tac_col:
+            rename["doi_tac"] = "Đối tác"
+        display_cols = (
+            ["Ngày", "Đối tác", "Sản phẩm", "Số đơn", "Doanh thu (tỷ)"]
+            if show_doi_tac_col
+            else ["Ngày", "Sản phẩm", "Số đơn", "Doanh thu (tỷ)"]
+        )
+        agg_day = agg_day.rename(columns=rename)[display_cols]
+
+        # Summary strip
+        _total_don = int(day_df["so_don_cap_moi"].sum())
+        _total_rev = day_df["tien_thuc_thu"].sum()
+        st.markdown(
+            f'<div style="display:flex;gap:24px;margin-bottom:10px;'
+            f'padding:10px 14px;background:#eef3ff;border-radius:6px;">'
+            f'<span style="font-size:0.78rem;color:{_MUTED};">Tổng đơn: '
+            f'<b style="color:{_INK};">{_total_don:,}</b></span>'
+            f'<span style="font-size:0.78rem;color:{_MUTED};">Tổng doanh thu: '
+            f'<b style="color:{_BLUE};">{_total_rev/1e9:.3f} tỷ</b></span>'
+            f'<span style="font-size:0.78rem;color:{_MUTED};">{len(agg_day):,} dòng</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        st.dataframe(agg_day, hide_index=True, width="stretch")
+
