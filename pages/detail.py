@@ -314,7 +314,7 @@ def render_detail_page() -> None:
     th_s = (
         f"font-size:0.64rem;font-weight:700;text-transform:uppercase;"
         f"color:{_BLUE};letter-spacing:0.09em;padding:7px 10px;"
-        f"border-bottom:2px solid {_BLUE};"
+        f"border-bottom:2px solid {_BLUE};white-space:nowrap;"
     )
     month_headers = "".join(
         f'<th style="{th_s}text-align:right;">T{m}</th>' for m in months
@@ -371,7 +371,7 @@ def render_detail_page() -> None:
             month_cells += (
                 f"<td style='text-align:right;padding:6px 10px;"
                 f"border-bottom:1px solid {_LINE};"
-                f"font-variant-numeric:tabular-nums;font-size:0.76rem;'>"
+                f"font-variant-numeric:tabular-nums;font-size:0.76rem;white-space:nowrap;'>"
                 f"{'—' if m_val == 0 else fmt_currency(m_val)}</td>"
             )
 
@@ -413,13 +413,13 @@ def render_detail_page() -> None:
         table_rows += (
             f"<tr>{name_cell}{month_cells}"
             f"<td style='text-align:right;padding:6px 10px;border-bottom:1px solid {_LINE};"
-            f"font-weight:700;font-size:0.78rem;font-variant-numeric:tabular-nums;'>"
+            f"font-weight:700;font-size:0.78rem;font-variant-numeric:tabular-nums;white-space:nowrap;'>"
             f"{fmt_currency(lk)}</td></tr>"
         )
 
     tot_month_cells = "".join(
         f"<td style='text-align:right;padding:7px 10px;font-weight:800;"
-        f"font-variant-numeric:tabular-nums;font-size:0.78rem;'>"
+        f"font-variant-numeric:tabular-nums;font-size:0.78rem;white-space:nowrap;'>"
         f"{fmt_currency(col_totals[m])}</td>"
         for m in months
     )
