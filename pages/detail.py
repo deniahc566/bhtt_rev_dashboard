@@ -466,35 +466,32 @@ def render_daily_page() -> None:
 
     # ── Chi tiết theo ngày ─────────────────────────────────────────────────────
 
-    # Pre-aggregate by (date, nhom_doi_tac, doi_tac)
+    # Pre-aggregate by (date, nhom_doi_tac, doi_tac, product_group)
     _day_src = df.copy()
     _day_src["date"] = df["ngay_ban_hang"].dt.strftime("%Y-%m-%d")
     _day_agg = (
-        _day_src.groupby(["date", "nhom_doi_tac", "doi_tac"], as_index=False)
+        _day_src.groupby(["date", "nhom_doi_tac", "doi_tac", "product_group"], as_index=False)
         .agg(rev=("tien_thuc_thu", "sum"), don=("so_don_cap_moi", "sum"))
         .sort_values("date")
     )
 
-    # Quick-month buttons: unique YYYY-MM from data
     _months_in_data = sorted(_day_agg["date"].str[:7].unique().tolist())
-
-    # Default date range = T-1 (last day with data), showing that month
-    _last_date_s = _day_agg["date"].max()   # "YYYY-MM-DD"
+    _last_date_s = _day_agg["date"].max()
     _min_date_s  = _day_agg["date"].min()
 
-    # Build nhom list and nhom→doi_tac mapping
     _nhom_list = sorted(_day_agg["nhom_doi_tac"].dropna().unique().tolist())
     _nhom_to_dt: dict = {}
     for _nhom in _nhom_list:
         _nhom_to_dt[_nhom] = sorted(
             _day_agg[_day_agg["nhom_doi_tac"] == _nhom]["doi_tac"].dropna().unique().tolist()
         )
+    _prod_list = sorted(_day_agg["product_group"].dropna().unique().tolist())
 
-    # Serialize to JSON for JS injection
-    _rows_json      = _json.dumps(_day_agg.to_dict(orient="records"), ensure_ascii=False)
-    _nhom_list_json = _json.dumps(_nhom_list, ensure_ascii=False)
-    _nhom_to_dt_json= _json.dumps(_nhom_to_dt, ensure_ascii=False)
-    _months_json    = _json.dumps(_months_in_data, ensure_ascii=False)
+    _rows_json       = _json.dumps(_day_agg.to_dict(orient="records"), ensure_ascii=False)
+    _nhom_list_json  = _json.dumps(_nhom_list, ensure_ascii=False)
+    _nhom_to_dt_json = _json.dumps(_nhom_to_dt, ensure_ascii=False)
+    _months_json     = _json.dumps(_months_in_data, ensure_ascii=False)
+    _prod_list_json  = _json.dumps(_prod_list, ensure_ascii=False)
 
     _HTML_TEMPLATE = """<!DOCTYPE html>
 <html>
@@ -505,7 +502,6 @@ def render_daily_page() -> None:
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;color:#0d1a2e;background:#fff;padding:0 4px;}
 
-/* Filter bar */
 .filter-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;padding:14px 16px;background:#f8fafd;border:1.5px solid #d0d8e4;border-radius:8px;margin-bottom:14px;}
 .filter-group{display:flex;flex-direction:column;gap:4px;}
 .filter-group label{font-size:10px;font-weight:700;letter-spacing:0.09em;text-transform:uppercase;color:#64748b;}
@@ -514,36 +510,27 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-siz
 .filter-group select{height:32px;border:1.5px solid #d0d8e4;border-radius:6px;padding:0 8px;font-size:12px;color:#0d1a2e;outline:none;background:#fff;min-width:140px;}
 .filter-group select:focus{border-color:#1558d6;}
 
-/* Quick month buttons */
-.month-btns{display:flex;gap:5px;flex-wrap:wrap;align-self:flex-end;}
-.mbtn{height:32px;padding:0 11px;border:1.5px solid #d0d8e4;border-radius:6px;background:#fff;font-size:11px;font-weight:700;color:#64748b;cursor:pointer;white-space:nowrap;}
-.mbtn:hover{border-color:#1558d6;color:#1558d6;}
-.mbtn.active{background:#1558d6;border-color:#1558d6;color:#fff;}
-
-/* Summary pills */
 .pills{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
 .pill{display:inline-flex;align-items:center;gap:6px;padding:5px 14px;border-radius:20px;font-size:12px;background:#eef3ff;border:1px solid #c5d8fb;}
 .pill .plabel{color:#64748b;font-weight:600;}
 .pill .pval{color:#1558d6;font-weight:700;}
-.pill.green .pval{color:#16a34a;}
 
-/* Charts */
 .charts-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;}
 .chart-card{background:#fff;border:1.5px solid #d0d8e4;border-radius:8px;padding:14px 16px;}
 .chart-card h4{font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#0d1a2e;margin-bottom:10px;}
 
-/* Table */
 .tbl-wrap{border:1.5px solid #d0d8e4;border-radius:8px;overflow:hidden;}
 .tbl-wrap table{width:100%;border-collapse:collapse;}
 .tbl-wrap thead th{background:#f1f5fb;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#64748b;padding:8px 12px;border-bottom:1.5px solid #d0d8e4;white-space:nowrap;}
+.tbl-wrap thead th.sticky{position:sticky;top:0;z-index:1;background:#f1f5fb;}
 .tbl-wrap tbody tr:hover{background:#f8fafd;}
-.tbl-wrap tbody td{padding:7px 12px;border-bottom:1px solid #e8edf5;font-size:12px;vertical-align:middle;}
+.tbl-wrap tbody td{padding:7px 12px;border-bottom:1px solid #e8edf5;font-size:12px;vertical-align:middle;white-space:nowrap;}
 .tbl-wrap tbody tr:last-child td{border-bottom:none;}
-.tbl-scroll{max-height:300px;overflow-y:auto;}
+.tbl-scroll{max-height:600px;overflow-y:auto;}
 td.num{text-align:right;font-variant-numeric:tabular-nums;}
-.pill-up{display:inline-block;background:#dcfce7;color:#16a34a;font-weight:700;font-size:10px;padding:2px 6px;border-radius:10px;}
-.pill-dn{display:inline-block;background:#fee2e2;color:#dc2626;font-weight:700;font-size:10px;padding:2px 6px;border-radius:10px;}
-.pill-eq{display:inline-block;background:#f1f5f9;color:#64748b;font-weight:700;font-size:10px;padding:2px 6px;border-radius:10px;}
+.pill-up{display:inline-block;background:#dcfce7;color:#16a34a;font-weight:700;font-size:10px;padding:2px 7px;border-radius:10px;}
+.pill-dn{display:inline-block;background:#fee2e2;color:#dc2626;font-weight:700;font-size:10px;padding:2px 7px;border-radius:10px;}
+.pill-eq{display:inline-block;background:#f1f5f9;color:#64748b;font-weight:700;font-size:10px;padding:2px 7px;border-radius:10px;}
 </style>
 </head>
 <body>
@@ -553,265 +540,171 @@ const ALL_ROWS   = __ROWS_JSON__;
 const NHOM_LIST  = __NHOM_LIST_JSON__;
 const NHOM_TO_DT = __NHOM_TO_DT_JSON__;
 const ALL_MONTHS = __MONTHS_JSON__;
+const PROD_LIST  = __PROD_LIST_JSON__;
 const LAST_DATE  = "__LAST_DATE__";
 const MIN_DATE   = "__MIN_DATE__";
 
-// ── State ────────────────────────────────────────────────────────────
 let state = {
   dateFrom: LAST_DATE,
   dateTo:   LAST_DATE,
-  nhom:     "",
-  dt:       "",
-  activeMonth: null,
+  nhom: "", dt: "", prod: "",
 };
 
-// ── Helpers ──────────────────────────────────────────────────────────
 function fmtRev(v) {
   if (v === 0) return "0 đ";
   const a = Math.abs(v);
-  if (a >= 1e9)  return (v / 1e9).toLocaleString("vi-VN", {minimumFractionDigits:2,maximumFractionDigits:2}) + " tỷ";
-  if (a >= 1e6)  return (v / 1e6).toLocaleString("vi-VN", {minimumFractionDigits:1,maximumFractionDigits:1}) + " triệu";
-  if (a >= 1e3)  return (v / 1e3).toLocaleString("vi-VN", {minimumFractionDigits:0,maximumFractionDigits:0}) + " nghìn";
-  return v.toLocaleString("vi-VN") + " đ";
+  if (a >= 1e9) return (v/1e9).toLocaleString("vi-VN",{minimumFractionDigits:2,maximumFractionDigits:2})+" tỷ";
+  if (a >= 1e6) return (v/1e6).toLocaleString("vi-VN",{minimumFractionDigits:1,maximumFractionDigits:1})+" triệu";
+  if (a >= 1e3) return (v/1e3).toLocaleString("vi-VN",{minimumFractionDigits:0,maximumFractionDigits:0})+" nghìn";
+  return v.toLocaleString("vi-VN")+" đ";
 }
-function fmtRevM(v) { // always in triệu for axis labels
-  if (v === 0) return "0";
-  const a = Math.abs(v);
-  if (a >= 1e9)  return (v / 1e9).toFixed(2) + " tỷ";
-  if (a >= 1e6)  return (v / 1e6).toFixed(1) + " tr";
-  if (a >= 1e3)  return (v / 1e3).toFixed(0) + " k";
+function fmtRevM(v) {
+  if (v===0) return "0";
+  const a=Math.abs(v);
+  if (a>=1e9) return (v/1e9).toFixed(2)+" tỷ";
+  if (a>=1e6) return (v/1e6).toFixed(1)+" tr";
+  if (a>=1e3) return (v/1e3).toFixed(0)+" k";
   return v.toString();
 }
-function fmtDate(s) { // "YYYY-MM-DD" → "DD/MM"
-  if (!s) return "";
-  const [y,m,d] = s.split("-");
-  return d + "/" + m;
-}
-function fmtDateFull(s) {
-  if (!s) return "";
-  const [y,m,d] = s.split("-");
-  return d + "/" + m + "/" + y;
-}
-function pctStr(a, b) {
-  if (b === 0) return null;
-  return ((a - b) / Math.abs(b) * 100).toFixed(1);
-}
+function fmtDate(s){if(!s)return"";const[y,m,d]=s.split("-");return d+"/"+m;}
+function fmtDateFull(s){if(!s)return"";const[y,m,d]=s.split("-");return d+"/"+m+"/"+y;}
+function pctStr(a,b){if(b===0)return null;return((a-b)/Math.abs(b)*100).toFixed(1);}
 
-// ── Filter rows ───────────────────────────────────────────────────────
 function filteredRows() {
   return ALL_ROWS.filter(r => {
     if (r.date < state.dateFrom || r.date > state.dateTo) return false;
-    if (state.nhom && r.nhom_doi_tac !== state.nhom) return false;
-    if (state.dt   && r.doi_tac      !== state.dt)   return false;
+    if (state.nhom && r.nhom_doi_tac  !== state.nhom) return false;
+    if (state.dt   && r.doi_tac       !== state.dt)   return false;
+    if (state.prod && r.product_group !== state.prod) return false;
     return true;
   });
 }
 
-// Aggregate filtered rows by date
 function byDate(rows) {
   const map = {};
   rows.forEach(r => {
-    if (!map[r.date]) map[r.date] = {date: r.date, rev: 0, don: 0};
-    map[r.date].rev += r.rev;
-    map[r.date].don += r.don;
+    if (!map[r.date]) map[r.date]={date:r.date,rev:0,don:0};
+    map[r.date].rev+=r.rev; map[r.date].don+=r.don;
   });
-  return Object.values(map).sort((a,b) => a.date.localeCompare(b.date));
+  return Object.values(map).sort((a,b)=>a.date.localeCompare(b.date));
 }
 
-// ── Charts ────────────────────────────────────────────────────────────
-let chartRev = null, chartDon = null;
-
+let chartRev=null, chartDon=null;
 function drawCharts(daily) {
-  const labels = daily.map(d => fmtDate(d.date));
-  const revs   = daily.map(d => d.rev);
-  const dons   = daily.map(d => d.don);
-  const avgRev = revs.length ? revs.reduce((a,b)=>a+b,0)/revs.length : 0;
-  const avgDon = dons.length ? dons.reduce((a,b)=>a+b,0)/dons.length : 0;
-  const avgRevArr = revs.map(() => avgRev);
-  const avgDonArr = dons.map(() => avgDon);
+  const labels=daily.map(d=>fmtDate(d.date));
+  const revs=daily.map(d=>d.rev), dons=daily.map(d=>d.don);
+  const avgRev=revs.length?revs.reduce((a,b)=>a+b,0)/revs.length:0;
+  const avgDon=dons.length?dons.reduce((a,b)=>a+b,0)/dons.length:0;
 
-  // Rev chart
-  if (chartRev) chartRev.destroy();
-  const ctxR = document.getElementById("chartRev").getContext("2d");
-  chartRev = new Chart(ctxR, {
-    data: {
-      labels,
-      datasets: [
-        {
-          type: "bar",
-          label: "Doanh thu",
-          data: revs,
-          backgroundColor: "rgba(21,88,214,0.65)",
-          borderRadius: 3,
-          yAxisID: "y",
-        },
-        {
-          type: "line",
-          label: "TB/ngày",
-          data: avgRevArr,
-          borderColor: "#dc2626",
-          borderWidth: 1.5,
-          borderDash: [4,3],
-          pointRadius: 0,
-          tension: 0,
-          yAxisID: "y",
-        }
-      ]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false, animation: false,
-      plugins: {
-        legend: {display: false},
-        tooltip: {
-          callbacks: {
-            label: ctx => ctx.dataset.label + ": " + fmtRev(ctx.parsed.y)
-          }
-        }
-      },
-      scales: {
-        x: {grid:{display:false}, ticks:{font:{size:10}, maxRotation:45, minRotation:0}},
-        y: {
-          ticks:{font:{size:10}, callback: v => fmtRevM(v)},
-          grid:{color:"#e8edf5"}
-        }
-      }
+  if(chartRev)chartRev.destroy();
+  chartRev=new Chart(document.getElementById("chartRev").getContext("2d"),{
+    data:{labels,datasets:[
+      {type:"bar",label:"Doanh thu",data:revs,backgroundColor:"rgba(21,88,214,0.65)",borderRadius:3},
+      {type:"line",label:"TB/ngày",data:revs.map(()=>avgRev),borderColor:"#dc2626",borderWidth:1.5,borderDash:[4,3],pointRadius:0,tension:0}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,animation:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+": "+fmtRev(ctx.parsed.y)}}},
+      scales:{x:{grid:{display:false},ticks:{font:{size:10},maxRotation:45,minRotation:0}},
+              y:{ticks:{font:{size:10},callback:v=>fmtRevM(v)},grid:{color:"#e8edf5"}}}
     }
   });
 
-  // Don chart
-  if (chartDon) chartDon.destroy();
-  const ctxD = document.getElementById("chartDon").getContext("2d");
-  chartDon = new Chart(ctxD, {
-    data: {
-      labels,
-      datasets: [
-        {
-          type: "bar",
-          label: "Số đơn",
-          data: dons,
-          backgroundColor: "rgba(14,165,233,0.65)",
-          borderRadius: 3,
-        },
-        {
-          type: "line",
-          label: "TB/ngày",
-          data: avgDonArr,
-          borderColor: "#dc2626",
-          borderWidth: 1.5,
-          borderDash: [4,3],
-          pointRadius: 0,
-          tension: 0,
-        }
-      ]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false, animation: false,
-      plugins: {legend:{display:false}, tooltip:{callbacks:{label:ctx=>ctx.dataset.label+": "+ctx.parsed.y.toLocaleString("vi-VN")}}},
-      scales: {
-        x: {grid:{display:false}, ticks:{font:{size:10}, maxRotation:45, minRotation:0}},
-        y: {ticks:{font:{size:10}}, grid:{color:"#e8edf5"}}
-      }
+  if(chartDon)chartDon.destroy();
+  chartDon=new Chart(document.getElementById("chartDon").getContext("2d"),{
+    data:{labels,datasets:[
+      {type:"bar",label:"Số đơn",data:dons,backgroundColor:"rgba(14,165,233,0.65)",borderRadius:3},
+      {type:"line",label:"TB/ngày",data:dons.map(()=>avgDon),borderColor:"#dc2626",borderWidth:1.5,borderDash:[4,3],pointRadius:0,tension:0}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,animation:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+": "+ctx.parsed.y.toLocaleString("vi-VN")}}},
+      scales:{x:{grid:{display:false},ticks:{font:{size:10},maxRotation:45,minRotation:0}},
+              y:{ticks:{font:{size:10}},grid:{color:"#e8edf5"}}}
     }
   });
 }
 
-// ── Render ────────────────────────────────────────────────────────────
 function render() {
-  const rows  = filteredRows();
-  const daily = byDate(rows);
+  const rows=filteredRows(), daily=byDate(rows);
+  const totRev=rows.reduce((s,r)=>s+r.rev,0);
+  const totDon=rows.reduce((s,r)=>s+r.don,0);
+  const nDays=daily.length, avgDay=nDays?totRev/nDays:0;
 
-  // Totals
-  const totRev = rows.reduce((s,r)=>s+r.rev, 0);
-  const totDon = rows.reduce((s,r)=>s+r.don, 0);
-  const nDays  = daily.length;
-  const avgDay = nDays ? totRev / nDays : 0;
+  document.getElementById("pills").innerHTML=
+    '<div class="pill"><span class="plabel">Tổng DT</span><span class="pval">'+fmtRev(totRev)+'</span></div>'+
+    '<div class="pill"><span class="plabel">Tổng đơn</span><span class="pval" style="color:#16a34a">'+totDon.toLocaleString("vi-VN")+'</span></div>'+
+    '<div class="pill"><span class="plabel">TB/ngày</span><span class="pval">'+fmtRev(avgDay)+'</span></div>'+
+    '<div class="pill"><span class="plabel">'+nDays+' ngày</span></div>';
 
-  // Pills HTML
-  document.getElementById("pills").innerHTML =
-    '<div class="pill"><span class="plabel">Tổng DT</span><span class="pval">' + fmtRev(totRev) + '</span></div>' +
-    '<div class="pill"><span class="plabel">Tổng đơn</span><span class="pval green" style="color:#16a34a">' + totDon.toLocaleString("vi-VN") + '</span></div>' +
-    '<div class="pill"><span class="plabel">TB/ngày</span><span class="pval">' + fmtRev(avgDay) + '</span></div>' +
-    '<div class="pill"><span class="plabel">' + nDays + ' ngày</span></div>';
-
-  // Charts
   drawCharts(daily);
 
-  // Table: rows by date, sorted desc
-  const dailyDesc = [...daily].reverse();
-  const revByDate = {};
-  daily.forEach((d,i) => { revByDate[d.date] = {rev: d.rev, don: d.don, prev: i > 0 ? daily[i-1].rev : null}; });
+  const dailyDesc=[...daily].reverse();
+  const byDateMap={};
+  daily.forEach((d,i)=>{byDateMap[d.date]={rev:d.rev,don:d.don,prev:i>0?daily[i-1].rev:null};});
 
-  let tbRows = "";
-  dailyDesc.forEach(d => {
-    const prev = revByDate[d.date].prev;
-    let cmpHtml = '<span class="pill-eq">—</span>';
-    if (prev !== null) {
-      const pct = pctStr(d.rev, prev);
-      if (pct !== null) {
-        if (parseFloat(pct) > 0)       cmpHtml = '<span class="pill-up">▲ +' + pct + '%</span>';
-        else if (parseFloat(pct) < 0)  cmpHtml = '<span class="pill-dn">▼ ' + pct + '%</span>';
-        else                            cmpHtml = '<span class="pill-eq">= 0%</span>';
+  let tbRows="";
+  dailyDesc.forEach(d=>{
+    const prev=byDateMap[d.date].prev;
+    let cmpHtml='<span class="pill-eq">—</span>';
+    if(prev!==null){
+      const pct=pctStr(d.rev,prev);
+      if(pct!==null){
+        if(parseFloat(pct)>0)      cmpHtml='<span class="pill-up">▲ +'+pct+'%</span>';
+        else if(parseFloat(pct)<0) cmpHtml='<span class="pill-dn">▼ '+pct+'%</span>';
+        else                       cmpHtml='<span class="pill-eq">= 0%</span>';
       }
     }
-    const revPerDon = d.don > 0 ? fmtRev(d.rev / d.don) : "—";
-    tbRows +=
-      '<tr>' +
-      '<td>' + fmtDateFull(d.date) + '</td>' +
-      '<td class="num">' + fmtRev(d.rev) + '</td>' +
-      '<td class="num">' + d.don.toLocaleString("vi-VN") + '</td>' +
-      '<td class="num">' + revPerDon + '</td>' +
-      '<td style="text-align:center;">' + cmpHtml + '</td>' +
-      '</tr>';
+    const rpd=d.don>0?fmtRev(d.rev/d.don):"—";
+    tbRows+='<tr><td>'+fmtDateFull(d.date)+'</td><td class="num">'+fmtRev(d.rev)+'</td>'+
+            '<td class="num">'+d.don.toLocaleString("vi-VN")+'</td><td class="num">'+rpd+'</td>'+
+            '<td style="text-align:center;">'+cmpHtml+'</td></tr>';
   });
-
-  document.getElementById("tbl-body").innerHTML = tbRows || '<tr><td colspan="5" style="text-align:center;color:#64748b;padding:16px;">Không có dữ liệu</td></tr>';
+  document.getElementById("tbl-body").innerHTML=tbRows||'<tr><td colspan="5" style="text-align:center;color:#64748b;padding:16px;">Không có dữ liệu</td></tr>';
 }
 
-// ── Controls ──────────────────────────────────────────────────────────
 function buildDtOptions(nhom) {
-  const sel = document.getElementById("selDt");
-  const opts = nhom ? (NHOM_TO_DT[nhom] || []) : [...new Set(ALL_ROWS.map(r=>r.doi_tac))].sort();
-  sel.innerHTML = '<option value="">(Tất cả đối tác)</option>' +
-    opts.map(d => '<option value="'+d+'"'+(state.dt===d?' selected':'')+'>'+d+'</option>').join("");
+  const sel=document.getElementById("selDt");
+  const opts=nhom?(NHOM_TO_DT[nhom]||[]):[...new Set(ALL_ROWS.map(r=>r.doi_tac))].sort();
+  sel.innerHTML='<option value="">(Tất cả đối tác)</option>'+
+    opts.map(d=>'<option value="'+d+'"'+(state.dt===d?' selected':'')+'>'+d+'</option>').join("");
 }
 
-function buildMonthBtns() {
-  const wrap = document.getElementById("monthBtns");
-  wrap.innerHTML = ALL_MONTHS.map(m => {
-    const [y, mo] = m.split("-");
-    const label = "T" + parseInt(mo) + "/" + y;
-    return '<button class="mbtn'+(state.activeMonth===m?' active':'')+'" data-month="'+m+'">'+label+'</button>';
-  }).join("");
-  wrap.querySelectorAll(".mbtn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const m = btn.dataset.month;
-      if (state.activeMonth === m) {
-        // deselect → restore full range
-        state.activeMonth = null;
-        state.dateFrom = MIN_DATE;
-        state.dateTo   = LAST_DATE;
-      } else {
-        state.activeMonth = m;
-        const [y, mo] = m.split("-");
-        const lastDay = new Date(parseInt(y), parseInt(mo), 0).getDate();
-        state.dateFrom = m + "-01";
-        state.dateTo   = m + "-" + String(lastDay).padStart(2,"0");
-      }
-      document.getElementById("inpFrom").value = state.dateFrom;
-      document.getElementById("inpTo").value   = state.dateTo;
-      buildMonthBtns();
-      render();
-    });
+function syncMonthSelect() {
+  const sel=document.getElementById("selMonth");
+  if(!sel)return;
+  // find which month matches current dateFrom if exact month range
+  let matched="";
+  ALL_MONTHS.forEach(m=>{
+    const [y,mo]=m.split("-");
+    const lastDay=new Date(parseInt(y),parseInt(mo),0).getDate();
+    if(state.dateFrom===m+"-01"&&state.dateTo===m+"-"+String(lastDay).padStart(2,"0")) matched=m;
   });
+  sel.value=matched;
+}
+
+function applyMonth(m) {
+  if(!m){
+    state.dateFrom=MIN_DATE; state.dateTo=LAST_DATE;
+  } else {
+    const [y,mo]=m.split("-");
+    const lastDay=new Date(parseInt(y),parseInt(mo),0).getDate();
+    state.dateFrom=m+"-01";
+    state.dateTo=m+"-"+String(lastDay).padStart(2,"0");
+  }
+  document.getElementById("inpFrom").value=state.dateFrom;
+  document.getElementById("inpTo").value=state.dateTo;
 }
 
 function init() {
-  // Set initial date range = last date only
-  state.dateFrom = LAST_DATE;
-  state.dateTo   = LAST_DATE;
+  state.dateFrom=LAST_DATE; state.dateTo=LAST_DATE;
+  const app=document.getElementById("app");
+  const monthOpts='<option value="">(Tất cả tháng)</option>'+
+    ALL_MONTHS.map(m=>{const[y,mo]=m.split("-");return'<option value="'+m+'">T'+parseInt(mo)+'/'+y+'</option>';}).join("");
+  const prodOpts='<option value="">(Tất cả sản phẩm)</option>'+
+    PROD_LIST.map(p=>'<option value="'+p+'">'+p+'</option>').join("");
+  const nhomOpts='<option value="">(Tất cả nhóm)</option>'+
+    NHOM_LIST.map(n=>'<option value="'+n+'">'+n+'</option>').join("");
 
-  const app = document.getElementById("app");
-  app.innerHTML = `
+  app.innerHTML=`
     <div class="filter-bar">
       <div class="filter-group">
         <label>Từ ngày</label>
@@ -823,23 +716,22 @@ function init() {
       </div>
       <div class="filter-group">
         <label>Tháng nhanh</label>
-        <div class="month-btns" id="monthBtns"></div>
+        <select id="selMonth">${monthOpts}</select>
+      </div>
+      <div class="filter-group">
+        <label>Nhóm sản phẩm</label>
+        <select id="selProd">${prodOpts}</select>
       </div>
       <div class="filter-group">
         <label>Nhóm đối tác</label>
-        <select id="selNhom">
-          <option value="">(Tất cả nhóm)</option>
-          ${NHOM_LIST.map(n=>'<option value="'+n+'">'+n+'</option>').join("")}
-        </select>
+        <select id="selNhom">${nhomOpts}</select>
       </div>
       <div class="filter-group">
         <label>Tên đối tác</label>
         <select id="selDt"><option value="">(Tất cả đối tác)</option></select>
       </div>
     </div>
-
     <div class="pills" id="pills"></div>
-
     <div class="charts-row">
       <div class="chart-card">
         <h4>Doanh thu theo ngày</h4>
@@ -850,54 +742,54 @@ function init() {
         <div style="height:180px;"><canvas id="chartDon"></canvas></div>
       </div>
     </div>
-
     <div class="tbl-wrap">
       <div class="tbl-scroll">
         <table>
-          <thead>
-            <tr>
-              <th>Ngày</th>
-              <th style="text-align:right;">DT (tr.đ)</th>
-              <th style="text-align:right;">Số đơn</th>
-              <th style="text-align:right;">DT/đơn</th>
-              <th style="text-align:center;">So hôm trước</th>
-            </tr>
-          </thead>
+          <thead><tr>
+            <th class="sticky">Ngày</th>
+            <th class="sticky" style="text-align:right;">DT</th>
+            <th class="sticky" style="text-align:right;">Số đơn</th>
+            <th class="sticky" style="text-align:right;">DT/đơn</th>
+            <th class="sticky" style="text-align:center;">So hôm trước</th>
+          </tr></thead>
           <tbody id="tbl-body"></tbody>
         </table>
       </div>
     </div>
   `;
 
-  buildDtOptions("");
-  buildMonthBtns();
+  // find current month in data and pre-select it
+  const curMonth=ALL_MONTHS.length?ALL_MONTHS[ALL_MONTHS.length-1]:"";
+  if(curMonth){
+    document.getElementById("selMonth").value=curMonth;
+    applyMonth(curMonth);
+    document.getElementById("inpFrom").value=state.dateFrom;
+    document.getElementById("inpTo").value=state.dateTo;
+  }
 
-  document.getElementById("inpFrom").addEventListener("change", e => {
-    state.dateFrom = e.target.value;
-    state.activeMonth = null;
-    buildMonthBtns();
-    render();
+  buildDtOptions("");
+
+  document.getElementById("inpFrom").addEventListener("change",e=>{
+    state.dateFrom=e.target.value; syncMonthSelect(); render();
   });
-  document.getElementById("inpTo").addEventListener("change", e => {
-    state.dateTo = e.target.value;
-    state.activeMonth = null;
-    buildMonthBtns();
-    render();
+  document.getElementById("inpTo").addEventListener("change",e=>{
+    state.dateTo=e.target.value; syncMonthSelect(); render();
   });
-  document.getElementById("selNhom").addEventListener("change", e => {
-    state.nhom = e.target.value;
-    state.dt   = "";
-    buildDtOptions(state.nhom);
-    render();
+  document.getElementById("selMonth").addEventListener("change",e=>{
+    applyMonth(e.target.value); render();
   });
-  document.getElementById("selDt").addEventListener("change", e => {
-    state.dt = e.target.value;
-    render();
+  document.getElementById("selProd").addEventListener("change",e=>{
+    state.prod=e.target.value; render();
+  });
+  document.getElementById("selNhom").addEventListener("change",e=>{
+    state.nhom=e.target.value; state.dt=""; buildDtOptions(state.nhom); render();
+  });
+  document.getElementById("selDt").addEventListener("change",e=>{
+    state.dt=e.target.value; render();
   });
 
   render();
 }
-
 init();
 </script>
 </body>
@@ -909,8 +801,9 @@ init();
         .replace("__NHOM_LIST_JSON__",  _nhom_list_json)
         .replace("__NHOM_TO_DT_JSON__", _nhom_to_dt_json)
         .replace("__MONTHS_JSON__",     _months_json)
+        .replace("__PROD_LIST_JSON__",  _prod_list_json)
         .replace("__LAST_DATE__",       _last_date_s)
         .replace("__MIN_DATE__",        _min_date_s)
     )
-    _cmp.html(_html, height=940, scrolling=False)
+    _cmp.html(_html, height=1020, scrolling=False)
 
