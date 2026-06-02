@@ -452,28 +452,46 @@ def render_detail_page() -> None:
     # ── Section 4: Chi tiết theo ngày ─────────────────────────────────────────
     section_head("Chi tiết theo ngày")
 
-    # Filter cascading: nhóm → đối tác
-    nhom_options = ["(Tất cả)"] + sorted(df["nhom_doi_tac"].dropna().unique().tolist())
-    sel_nhom = st.selectbox("Nhóm đối tác", nhom_options, key="day_nhom")
+    # Ngày mặc định = T-1 so với ngày có dữ liệu cuối cùng
+    _last_date    = df["ngay_ban_hang"].dt.date.max()
+    _default_date = _last_date - pd.Timedelta(days=1)
+    # Nếu T-1 không có dữ liệu thì fallback về ngày cuối cùng
+    _available_dates = set(df["ngay_ban_hang"].dt.date.unique())
+    if _default_date not in _available_dates:
+        _default_date = _last_date
 
-    if sel_nhom == "(Tất cả)":
-        dt_options = ["(Tất cả)"] + sorted(df["doi_tac"].dropna().unique().tolist())
-        df_filtered_nhom = df
-    else:
-        df_filtered_nhom = df[df["nhom_doi_tac"] == sel_nhom]
-        dt_options = ["(Tất cả)"] + sorted(df_filtered_nhom["doi_tac"].dropna().unique().tolist())
+    f_col1, f_col2, f_col3 = st.columns([1, 1, 1])
+    with f_col1:
+        nhom_options = ["(Tất cả)"] + sorted(df["nhom_doi_tac"].dropna().unique().tolist())
+        sel_nhom = st.selectbox("Nhóm đối tác", nhom_options, key="day_nhom")
+    with f_col2:
+        if sel_nhom == "(Tất cả)":
+            df_filtered_nhom = df
+            dt_options = ["(Tất cả)"] + sorted(df["doi_tac"].dropna().unique().tolist())
+        else:
+            df_filtered_nhom = df[df["nhom_doi_tac"] == sel_nhom]
+            dt_options = ["(Tất cả)"] + sorted(df_filtered_nhom["doi_tac"].dropna().unique().tolist())
+        sel_dt = st.selectbox("Tên đối tác", dt_options, key="day_dt")
+    with f_col3:
+        sel_date = st.date_input(
+            "Ngày",
+            value=_default_date,
+            min_value=df["ngay_ban_hang"].dt.date.min(),
+            max_value=_last_date,
+            key="day_date",
+            format="DD/MM/YYYY",
+        )
 
-    sel_dt = st.selectbox("Tên đối tác", dt_options, key="day_dt")
-
+    # Áp filter
     if sel_dt != "(Tất cả)":
         day_df = df_filtered_nhom[df_filtered_nhom["doi_tac"] == sel_dt].copy()
     else:
         day_df = df_filtered_nhom.copy()
+    day_df = day_df[day_df["ngay_ban_hang"].dt.date == sel_date]
 
     if day_df.empty:
-        st.info("Không có dữ liệu cho lựa chọn này.")
+        st.info(f"Không có dữ liệu ngày {sel_date.strftime('%d/%m/%Y')} cho lựa chọn này.")
     else:
-        # Aggregate by date + doi_tac + product_group
         show_doi_tac_col = sel_dt == "(Tất cả)"
         group_cols = ["ngay_ban_hang", "doi_tac", "product_group"] if show_doi_tac_col \
                      else ["ngay_ban_hang", "product_group"]
@@ -497,7 +515,6 @@ def render_detail_page() -> None:
         )
         agg_day = agg_day.rename(columns=rename)[display_cols]
 
-        # Summary strip
         _total_don = int(day_df["so_don_cap_moi"].sum())
         _total_rev = day_df["tien_thuc_thu"].sum()
         st.markdown(
