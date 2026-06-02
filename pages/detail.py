@@ -216,12 +216,11 @@ def render_detail_page() -> None:
         for m in pivot_months:
             m_val = pivot_df[(pivot_df["nhom_doi_tac"] == name) & (pivot_df["thang_so"] == m)]["tien_thuc_thu"].sum()
             col_months_sum[m] += m_val
-            m_b = m_val / 1e9
             month_cells += (
                 f"<td style='text-align:right;padding:8px 10px;"
                 f"border-bottom:1px solid {_LINE};"
                 f"font-variant-numeric:tabular-nums;font-size:0.78rem;'>"
-                f"{'—' if m_b == 0 else f'{m_b:.2f}'}</td>"
+                f"{'—' if m_val == 0 else fmt_currency(m_val)}</td>"
             )
 
         table_rows += (
@@ -231,7 +230,7 @@ def render_detail_page() -> None:
             f"{month_cells}"
             f"<td style='text-align:right;padding:8px 10px;border-bottom:1px solid {_LINE};"
             f"font-weight:700;font-size:0.80rem;font-variant-numeric:tabular-nums;'>"
-            f"{lk / 1e9:.2f}</td>"
+            f"{fmt_currency(lk)}</td>"
             f"<td style='text-align:right;padding:8px 10px;border-bottom:1px solid {_LINE};white-space:nowrap;'>"
             f"<span style='display:inline-block;width:{bar_w:.0f}px;height:6px;"
             f"background:{_BLUE};border-radius:3px;vertical-align:middle;margin-right:5px;'></span>"
@@ -244,7 +243,7 @@ def render_detail_page() -> None:
     tot_month_cells = "".join(
         f"<td style='text-align:right;padding:8px 10px;font-weight:800;"
         f"font-variant-numeric:tabular-nums;font-size:0.78rem;'>"
-        f"{col_months_sum[m] / 1e9:.2f}</td>"
+        f"{fmt_currency(col_months_sum[m])}</td>"
         for m in pivot_months
     )
     tot_style = (
@@ -255,7 +254,7 @@ def render_detail_page() -> None:
         f"<tr style='background:{_BLUE4};'>"
         f"<td style='text-align:left;{tot_style}font-size:0.80rem;color:{_BLUE};'>TỔNG CỘNG</td>"
         f"{tot_month_cells}"
-        f"<td style='text-align:right;{tot_style}font-size:0.80rem;color:{_BLUE};'>{col_tong / 1e9:.2f}</td>"
+        f"<td style='text-align:right;{tot_style}font-size:0.80rem;color:{_BLUE};'>{fmt_currency(col_tong)}</td>"
         f"<td style='text-align:right;{tot_style}color:{_BLUE};'>100%</td>"
         f"</tr>"
     )
@@ -357,7 +356,7 @@ def render_detail_page() -> None:
                 f"font-size:0.78rem;color:{_BLUE};padding:7px 10px;"
                 f"border-top:2px solid {_LINE};'>"
                 f"{nhom} &nbsp;—&nbsp; "
-                f"<span style='font-weight:400;'>{nhom_lk_val/1e9:.2f} tỷ</span>"
+                f"<span style='font-weight:400;'>{fmt_currency(nhom_lk_val)}</span>"
                 f"</td></tr>"
             )
 
@@ -371,7 +370,7 @@ def render_detail_page() -> None:
                 f"<td style='text-align:right;padding:6px 10px;"
                 f"border-bottom:1px solid {_LINE};"
                 f"font-variant-numeric:tabular-nums;font-size:0.76rem;'>"
-                f"{'—' if m_val == 0 else f'{m_val/1e9:.2f}'}</td>"
+                f"{'—' if m_val == 0 else fmt_currency(m_val)}</td>"
             )
 
         if dt in dt_with_products:
@@ -382,7 +381,7 @@ def render_detail_page() -> None:
                 pg  = pr["product_group"]
                 plk = pr["plk"]
                 pcells = "".join(
-                    f"<td>{'—' if pv == 0 else f'{pv/1e9:.2f}'}</td>"
+                    f"<td>{'—' if pv == 0 else fmt_currency(pv)}</td>"
                     for m in months
                     for pv in [prod_agg[
                         (prod_agg["doi_tac"] == dt) & (prod_agg["product_group"] == pg)
@@ -391,7 +390,7 @@ def render_detail_page() -> None:
                 )
                 prod_rows += (
                     f"<tr><td>{pg}</td>{pcells}"
-                    f"<td><b>{plk/1e9:.2f}</b></td></tr>"
+                    f"<td><b>{fmt_currency(plk)}</b></td></tr>"
                 )
             name_cell = (
                 f"<td style='text-align:left;padding:6px 10px 6px 14px;"
@@ -413,13 +412,13 @@ def render_detail_page() -> None:
             f"<tr>{name_cell}{month_cells}"
             f"<td style='text-align:right;padding:6px 10px;border-bottom:1px solid {_LINE};"
             f"font-weight:700;font-size:0.78rem;font-variant-numeric:tabular-nums;'>"
-            f"{lk/1e9:.2f}</td></tr>"
+            f"{fmt_currency(lk)}</td></tr>"
         )
 
     tot_month_cells = "".join(
         f"<td style='text-align:right;padding:7px 10px;font-weight:800;"
         f"font-variant-numeric:tabular-nums;font-size:0.78rem;'>"
-        f"{col_totals[m]/1e9:.2f}</td>"
+        f"{fmt_currency(col_totals[m])}</td>"
         for m in months
     )
     tot_s = (
@@ -431,7 +430,7 @@ def render_detail_page() -> None:
         f"<td style='text-align:left;{tot_s}font-size:0.78rem;color:{_BLUE};'>TỔNG CỘNG</td>"
         f"{tot_month_cells}"
         f"<td style='text-align:right;{tot_s}font-size:0.78rem;color:{_BLUE};'>"
-        f"{col_total_lk/1e9:.2f}</td>"
+        f"{fmt_currency(col_total_lk)}</td>"
         f"</tr>"
     )
 
@@ -502,16 +501,16 @@ def render_detail_page() -> None:
                          ascending=True)
         )
         agg_day["Ngày"] = agg_day["ngay_ban_hang"].dt.strftime("%d/%m/%Y")
-        agg_day["Doanh thu (tỷ)"] = (agg_day["doanh_thu"] / 1e9).map(lambda v: f"{v:.4f}")
+        agg_day["Doanh thu"] = agg_day["doanh_thu"].map(fmt_currency)
         agg_day["Số đơn"] = agg_day["so_don"].astype(int)
 
         rename = {"product_group": "Sản phẩm"}
         if show_doi_tac_col:
             rename["doi_tac"] = "Đối tác"
         display_cols = (
-            ["Ngày", "Đối tác", "Sản phẩm", "Số đơn", "Doanh thu (tỷ)"]
+            ["Ngày", "Đối tác", "Sản phẩm", "Số đơn", "Doanh thu"]
             if show_doi_tac_col
-            else ["Ngày", "Sản phẩm", "Số đơn", "Doanh thu (tỷ)"]
+            else ["Ngày", "Sản phẩm", "Số đơn", "Doanh thu"]
         )
         agg_day = agg_day.rename(columns=rename)[display_cols]
 
@@ -523,7 +522,7 @@ def render_detail_page() -> None:
             f'<span style="font-size:0.78rem;color:{_MUTED};">Tổng đơn: '
             f'<b style="color:{_INK};">{_total_don:,}</b></span>'
             f'<span style="font-size:0.78rem;color:{_MUTED};">Tổng doanh thu: '
-            f'<b style="color:{_BLUE};">{_total_rev/1e9:.3f} tỷ</b></span>'
+            f'<b style="color:{_BLUE};">{fmt_currency(_total_rev)}</b></span>'
             f'<span style="font-size:0.78rem;color:{_MUTED};">{len(agg_day):,} dòng</span>'
             f'</div>',
             unsafe_allow_html=True,

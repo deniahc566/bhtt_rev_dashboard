@@ -12,6 +12,7 @@ import streamlit as st
 
 from data_loader import load_partner_data, load_bhs_data, load_telesale_data, load_gateway_data
 from ui_helpers import (
+    fmt_currency,
     kpi_card,
     section_head, _chart_title, _chart_sub,
 )
@@ -148,7 +149,7 @@ def render_overview_page() -> None:
             .sum()
             .sort_values("tien_thuc_thu", ascending=False)
         )
-        rev_nhom["label_b"] = (rev_nhom["tien_thuc_thu"] / 1e9).apply(lambda v: f"{v:.2f} tỷ")
+        rev_nhom["label_b"] = rev_nhom["tien_thuc_thu"].apply(fmt_currency)
         n = len(rev_nhom)
         colors = [_BLUE if i == 0 else (_BLUE2 if i < 3 else _BLUE3) for i in range(n)]
         rev_nhom["_color"] = colors
@@ -197,7 +198,7 @@ def render_overview_page() -> None:
         legend_html = "".join(
             f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">'
             f'<span style="width:12px;height:12px;border-radius:2px;background:{r["_color"]};flex-shrink:0;"></span>'
-            f'<span style="font-size:0.72rem;color:{_INK};">{r["Phòng"]} — <b>{r["Doanh thu"]/1e9:.2f} tỷ</b></span>'
+            f'<span style="font-size:0.72rem;color:{_INK};">{r["Phòng"]} — <b>{fmt_currency(r["Doanh thu"])}</b></span>'
             f'</div>'
             for r in donut_rows
         )
@@ -294,9 +295,9 @@ def render_overview_page() -> None:
                     f"<td style='text-align:left;font-weight:600;padding:8px 10px;"
                     f"border-bottom:1px solid {_LINE};'>{kenh}</td>"
                     f"<td style='text-align:right;padding:8px 10px;border-bottom:1px solid {_LINE};"
-                    f"font-variant-numeric:tabular-nums;'>{v_cy/1e9:.3f}</td>"
+                    f"font-variant-numeric:tabular-nums;'>{fmt_currency(v_cy)}</td>"
                     f"<td style='text-align:right;padding:8px 10px;border-bottom:1px solid {_LINE};"
-                    f"font-variant-numeric:tabular-nums;'>{v_py/1e9:.3f}</td>"
+                    f"font-variant-numeric:tabular-nums;'>{fmt_currency(v_py)}</td>"
                     f"<td style='text-align:right;padding:8px 10px;border-bottom:1px solid {_LINE};'>"
                     f"<span style='{pill_css}{pill_style}'>{growth}</span></td>"
                     f"</tr>"
@@ -372,7 +373,7 @@ def render_overview_page() -> None:
             gw_rows = "".join(
                 f"<tr><td style='{td_l}'>{row['cong']}</td>"
                 f"<td style='{td_r}'>{int(row['orders']):,}</td>"
-                f"<td style='{td_r}'>{row['rev_b']:.2f} tỷ</td></tr>"
+                f"<td style='{td_r}'>{fmt_currency(row['rev_b'] * 1e9)}</td></tr>"
                 for _, row in gw_agg.sort_values("rev_b", ascending=False).iterrows()
             )
             td_tot = (
@@ -390,7 +391,7 @@ def render_overview_page() -> None:
                 f'<tr>'
                 f'<td style="text-align:left;{td_tot}">Tổng</td>'
                 f'<td style="text-align:right;{td_tot}">{_gw_total_orders:,}</td>'
-                f'<td style="text-align:right;{td_tot}">{_gw_total_rev_b:.2f} tỷ</td>'
+                f'<td style="text-align:right;{td_tot}">{fmt_currency(_gw_total_rev_b * 1e9)}</td>'
                 f'</tr>'
                 f'</tbody></table>',
                 unsafe_allow_html=True,

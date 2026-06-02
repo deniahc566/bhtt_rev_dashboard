@@ -29,16 +29,19 @@ _INK   = "#0d1a2e"
 
 
 def fmt_currency(value: float) -> str:
-    billions = value / 1_000_000_000
-    if billions >= 1:
-        return f"{billions:,.2f} tỷ"
-    return f"{value / 1_000_000:,.1f} tr"
+    """Tự động chọn đơn vị tỷ / triệu / nghìn tuỳ độ lớn."""
+    abs_v = abs(value)
+    if abs_v >= 1_000_000_000:
+        return f"{value / 1_000_000_000:,.2f} tỷ"
+    if abs_v >= 1_000_000:
+        return f"{value / 1_000_000:,.1f} triệu"
+    if abs_v >= 1_000:
+        return f"{value / 1_000:,.0f} nghìn"
+    return f"{value:,.0f} đ"
 
 
 def _fmt_vnd(v: float) -> str:
-    if abs(v) >= 1_000_000_000:
-        return f"{v / 1_000_000_000:.2f} tỷ"
-    return f"{v / 1_000_000:.2f} triệu"
+    return fmt_currency(v)
 
 
 def yoy_caption(current_val: float, yoy_val: float, fmt_fn, prev_year: int) -> str:
