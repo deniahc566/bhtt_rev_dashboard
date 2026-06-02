@@ -13,7 +13,7 @@ if str(_ROOT) not in sys.path:
 import streamlit as st
 
 from pages.overview import render_overview_page
-from pages.detail   import render_detail_page
+from pages.detail   import render_detail_page, render_daily_page
 from ui_helpers     import render_action_buttons
 
 _BLUE  = "#1558d6"
@@ -215,10 +215,13 @@ st.markdown(
 )
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab1, tab2 = st.tabs(["Tổng quan doanh số", "Chi tiết đối tác"])
+tab1, tab2, tab3 = st.tabs(["Tổng quan doanh số", "Chi tiết đối tác", "Chi tiết theo ngày"])
 
 with tab1:
     render_overview_page()
 
 with tab2:
     render_detail_page()
+
+with tab3:
+    render_daily_page()

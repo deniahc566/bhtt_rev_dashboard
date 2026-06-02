@@ -450,8 +450,21 @@ def render_detail_page() -> None:
         unsafe_allow_html=True,
     )
 
-    # ── Section 4: Chi tiết theo ngày ─────────────────────────────────────────
-    section_head("Chi tiết theo ngày")
+def render_daily_page() -> None:
+    try:
+        full_df = load_partner_data()
+    except Exception as e:
+        st.error(f"Không thể tải dữ liệu: {e}")
+        return
+
+    if full_df.empty:
+        st.warning("Chưa có dữ liệu.")
+        return
+
+    current_year = int(full_df["nam"].max())
+    df = full_df[full_df["nam"] == current_year].copy()
+
+    # ── Chi tiết theo ngày ─────────────────────────────────────────────────────
 
     # Pre-aggregate by (date, nhom_doi_tac, doi_tac)
     _day_src = df.copy()
