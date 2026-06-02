@@ -454,13 +454,11 @@ def render_detail_page() -> None:
     section_head("Chi tiết theo ngày")
 
     # Pre-aggregate by (date, nhom_doi_tac, doi_tac)
+    _day_src = df.copy()
+    _day_src["date"] = df["ngay_ban_hang"].dt.strftime("%Y-%m-%d")
     _day_agg = (
-        df.groupby(
-            [df["ngay_ban_hang"].dt.strftime("%Y-%m-%d"), "nhom_doi_tac", "doi_tac"],
-            as_index=False,
-        )
+        _day_src.groupby(["date", "nhom_doi_tac", "doi_tac"], as_index=False)
         .agg(rev=("tien_thuc_thu", "sum"), don=("so_don_cap_moi", "sum"))
-        .rename(columns={"ngay_ban_hang": "date"})
         .sort_values("date")
     )
 
