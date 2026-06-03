@@ -212,52 +212,53 @@ def render_overview_page() -> None:
         )
 
     # ── Section 2: Phòng Bảo hiểm số ─────────────────────────────────────────
-    section_head("Phòng Bảo hiểm số — phân rã theo kênh")
+    section_head("Phòng Bảo hiểm số")
 
     if bhs_cy.empty:
         st.warning("Chưa có dữ liệu BHS — chạy extract_manual_data.py và upload file Excel.")
     else:
-        col_ch_bar, col_ch_tbl = st.columns(2)
-
-        # Pivot: kenh x nam → doanh_thu
-        bhs_pivot = (
-            bhs_df[bhs_df["nam"].isin([current_year, prev_year])]
-            .groupby(["kenh", "nam"], as_index=False)["doanh_thu"].sum()
-        )
-        bhs_pivot["rev_b"] = bhs_pivot["doanh_thu"] / 1e9
-        bhs_pivot["Năm"] = bhs_pivot["nam"].apply(
-            lambda y: f"Lũy kế {y}"
-        )
+        col_ch_bar, col_ch_tbl = st.columns([1.4, 1])
 
         with col_ch_bar:
-            _chart_title("Doanh thu theo kênh — lũy kế")
-            _chart_sub(f"Lũy kế {current_year} vs {prev_year} (tỷ đồng)")
-            ch_chart = (
-                alt.Chart(bhs_pivot)
-                .mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3)
-                .encode(
-                    x=alt.X("kenh:N", title=None,
-                            axis=alt.Axis(labelFontSize=11, labelColor=_INK)),
-                    y=alt.Y("rev_b:Q", title="Tỷ đồng",
-                            axis=alt.Axis(labelFontSize=10, labelColor=_MUTED)),
-                    color=alt.Color(
-                        "Năm:N",
-                        scale=alt.Scale(
-                            domain=[f"Lũy kế {current_year}", f"Lũy kế {prev_year}"],
-                            range=[_BLUE, _BLUE4],
-                        ),
-                        legend=alt.Legend(orient="bottom", labelFontSize=11, symbolSize=80),
-                    ),
-                    xOffset="Năm:N",
-                    tooltip=[
-                        alt.Tooltip("kenh:N", title="Kênh"),
-                        alt.Tooltip("Năm:N"),
-                        alt.Tooltip("rev_b:Q", title="Tỷ đồng", format=".3f"),
-                    ],
-                )
-                .properties(height=240)
+            _all_kenh = sorted(bhs_cy["kenh"].dropna().unique().tolist())
+            _sel_kenh = st.selectbox(
+                "Kênh", ["(Tất cả)"] + _all_kenh, key="bhs_kenh_filter",
+                label_visibility="collapsed",
             )
-            st.altair_chart(ch_chart.configure_view(strokeWidth=0), width='stretch')
+            _bhs_monthly = bhs_cy.copy() if _sel_kenh == "(Tất cả)" else bhs_cy[bhs_cy["kenh"] == _sel_kenh].copy()
+            _bhs_monthly = (
+                _bhs_monthly.groupby("thang", as_index=False)["doanh_thu"].sum()
+                .sort_values("thang")
+            )
+            _bhs_monthly["thang_str"] = _bhs_monthly["thang"].apply(lambda m: f"T{m}")
+            _bhs_monthly["rev_b"] = _bhs_monthly["doanh_thu"] / 1e9
+            _bhs_monthly["label_b"] = _bhs_monthly["doanh_thu"].apply(fmt_currency)
+
+            _chart_title("Doanh thu theo tháng" + ("" if _sel_kenh == "(Tất cả)" else f" — {_sel_kenh}"))
+            _chart_sub(f"Lũy kế {current_year} (tỷ đồng) · tất cả kênh" if _sel_kenh == "(Tất cả)" else f"Lũy kế {current_year} · kênh {_sel_kenh}")
+
+            _thang_order = _bhs_monthly["thang_str"].tolist()
+            _bhs_base = alt.Chart(_bhs_monthly).encode(
+                x=alt.X("thang_str:N", title=None, sort=_thang_order,
+                        axis=alt.Axis(labelFontSize=11, labelColor=_INK)),
+                y=alt.Y("rev_b:Q", title="Tỷ đồng",
+                        scale=alt.Scale(domainMin=0, domainMax=float(_bhs_monthly["rev_b"].max() * 1.35)),
+                        axis=alt.Axis(labelFontSize=10, labelColor=_MUTED)),
+                tooltip=[
+                    alt.Tooltip("thang_str:N", title="Tháng"),
+                    alt.Tooltip("rev_b:Q", title="Tỷ đồng", format=".3f"),
+                ],
+            )
+            _bhs_bars = _bhs_base.mark_bar(
+                color=_BLUE, cornerRadiusTopLeft=3, cornerRadiusTopRight=3
+            )
+            _bhs_text = _bhs_base.mark_text(
+                dy=-6, fontSize=9, color=_INK
+            ).encode(text="label_b:N")
+            st.altair_chart(
+                (_bhs_bars + _bhs_text).properties(height=240).configure_view(strokeWidth=0),
+                width='stretch',
+            )
 
         with col_ch_tbl:
             _chart_title("Bảng chi tiết kênh")
@@ -266,7 +267,6 @@ def render_overview_page() -> None:
                 "display:inline-block;padding:2px 7px;border-radius:10px;"
                 "font-size:0.72rem;font-weight:700;"
             )
-            # Build per-channel summary
             kenh_cy = bhs_cy.groupby("kenh")["doanh_thu"].sum()
             kenh_py = bhs_py.groupby("kenh")["doanh_thu"].sum() if not bhs_py.empty else pd.Series(dtype=float)
             all_kenh = sorted(set(kenh_cy.index) | set(kenh_py.index))
