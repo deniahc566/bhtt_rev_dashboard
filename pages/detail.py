@@ -519,7 +519,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-siz
 .chart-card{background:#fff;border:1.5px solid #d0d8e4;padding:14px 16px;}
 .chart-card h4{font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#0d1a2e;margin-bottom:10px;}
 
-.tbl-wrap{border:1.5px solid #d0d8e4;overflow:hidden;}
+.tbl-wrap{border:1.5px solid #d0d8e4;}
 .tbl-wrap table{width:100%;border-collapse:collapse;}
 .tbl-wrap thead th{background:#f1f5fb;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#64748b;padding:8px 12px;border-bottom:1.5px solid #d0d8e4;white-space:nowrap;}
 .tbl-wrap thead th.sticky{position:sticky;top:0;z-index:1;background:#f1f5fb;}
@@ -668,6 +668,21 @@ function buildDtOptions(nhom) {
     opts.map(d=>'<option value="'+d+'"'+(state.dt===d?' selected':'')+'>'+d+'</option>').join("");
 }
 
+function buildProdOptions(nhom, dt) {
+  const sel=document.getElementById("selProd");
+  if(!sel) return;
+  const prods=[...new Set(
+    ALL_ROWS
+      .filter(r=>(!nhom||r.nhom_doi_tac===nhom)&&(!dt||r.doi_tac===dt))
+      .map(r=>r.product_group)
+      .filter(Boolean)
+  )].sort();
+  const prev=state.prod;
+  sel.innerHTML='<option value="">(Tất cả sản phẩm)</option>'+
+    prods.map(p=>'<option value="'+p+'"'+(prev===p?' selected':'')+'>'+p+'</option>').join("");
+  if(!prods.includes(prev)) state.prod="";
+}
+
 function syncMonthSelect() {
   const sel=document.getElementById("selMonth");
   if(!sel)return;
@@ -699,8 +714,6 @@ function init() {
   const app=document.getElementById("app");
   const monthOpts='<option value="">(Tất cả tháng)</option>'+
     ALL_MONTHS.map(m=>{const[y,mo]=m.split("-");return'<option value="'+m+'">T'+parseInt(mo)+'/'+y+'</option>';}).join("");
-  const prodOpts='<option value="">(Tất cả sản phẩm)</option>'+
-    PROD_LIST.map(p=>'<option value="'+p+'">'+p+'</option>').join("");
   const nhomOpts='<option value="">(Tất cả nhóm)</option>'+
     NHOM_LIST.map(n=>'<option value="'+n+'">'+n+'</option>').join("");
 
@@ -720,7 +733,7 @@ function init() {
       </div>
       <div class="filter-group">
         <label>Nhóm sản phẩm</label>
-        <select id="selProd">${prodOpts}</select>
+        <select id="selProd"><option value="">(Tất cả sản phẩm)</option></select>
       </div>
       <div class="filter-group">
         <label>Nhóm đối tác</label>
@@ -768,6 +781,7 @@ function init() {
   }
 
   buildDtOptions("");
+  buildProdOptions("", "");
 
   document.getElementById("inpFrom").addEventListener("change",e=>{
     state.dateFrom=e.target.value; syncMonthSelect(); render();
@@ -782,10 +796,12 @@ function init() {
     state.prod=e.target.value; render();
   });
   document.getElementById("selNhom").addEventListener("change",e=>{
-    state.nhom=e.target.value; state.dt=""; buildDtOptions(state.nhom); render();
+    state.nhom=e.target.value; state.dt=""; state.prod="";
+    buildDtOptions(state.nhom); buildProdOptions(state.nhom, ""); render();
   });
   document.getElementById("selDt").addEventListener("change",e=>{
-    state.dt=e.target.value; render();
+    state.dt=e.target.value; state.prod="";
+    buildProdOptions(state.nhom, state.dt); render();
   });
 
   render();
@@ -805,5 +821,5 @@ init();
         .replace("__LAST_DATE__",       _last_date_s)
         .replace("__MIN_DATE__",        _min_date_s)
     )
-    _cmp.html(_html, height=1020, scrolling=False)
+    _cmp.html(_html, height=1080, scrolling=False)
 
