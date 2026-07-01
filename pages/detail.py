@@ -74,7 +74,7 @@ def render_detail_page() -> None:
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.markdown(kpi_card(
-            label="Tổng lũy kế T1–T4",
+            label="Tổng doanh thu lũy kế",
             value=f"{tong / 1e9:,.2f} <span style='font-size:0.9rem;color:{_MUTED};font-weight:600;'>tỷ</span>",
             delta_str="Tổng doanh số đối tác lũy kế",
             delta_color=_MUTED,
