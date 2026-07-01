@@ -136,6 +136,133 @@ def render_overview_page() -> None:
                 subtitle="Chạy extract_manual_data.py để nạp",
             ), unsafe_allow_html=True)
 
+    # ── Section 0: Doanh thu theo tháng ──────────────────────────────────────
+    section_head("Doanh thu theo tháng")
+
+    _phong_opts = ["Tất cả", "Phòng Phát triển đối tác", "Phòng Bảo hiểm số"]
+    _phong_filter = st.radio(
+        "Lọc theo phòng",
+        options=_phong_opts,
+        horizontal=True,
+        key="monthly_rev_phong_filter",
+        label_visibility="collapsed",
+    )
+
+    # Monthly data cho từng phòng
+    _partner_m = (
+        df_cy.assign(thang=df_cy["thang"].astype(int))
+        .groupby("thang", as_index=False)["tien_thuc_thu"]
+        .sum()
+        .rename(columns={"tien_thuc_thu": "doanh_thu"})
+    )
+    _partner_m["phong"] = "Phòng Phát triển đối tác"
+
+    if not bhs_cy.empty:
+        _bhs_m2 = bhs_cy.groupby("thang", as_index=False)["doanh_thu"].sum()
+        _bhs_m2["phong"] = "Phòng Bảo hiểm số"
+    else:
+        _bhs_m2 = pd.DataFrame(columns=["thang", "doanh_thu", "phong"])
+
+    if _phong_filter == "Phòng Phát triển đối tác":
+        _monthly_long = _partner_m.copy()
+        _bar_color = _BLUE
+    elif _phong_filter == "Phòng Bảo hiểm số":
+        _monthly_long = _bhs_m2.copy()
+        _bar_color = _BLUE3
+    else:
+        _monthly_long = pd.concat([_partner_m, _bhs_m2], ignore_index=True)
+        _bar_color = None  # stacked
+
+    _monthly_long = _monthly_long.sort_values("thang")
+    _monthly_long["thang_str"] = _monthly_long["thang"].apply(lambda m: f"T{m}")
+    _monthly_long["rev_b"] = _monthly_long["doanh_thu"] / 1e9
+
+    # Tính total per tháng để hiện label trên đầu bar
+    _monthly_total = (
+        _monthly_long.groupby(["thang", "thang_str"], as_index=False)["rev_b"].sum()
+    )
+    _monthly_total["label_b"] = (_monthly_total["rev_b"] * 1e9).apply(fmt_currency)
+    _thang_order_m = _monthly_total.sort_values("thang")["thang_str"].tolist()
+
+    _sub_label = (
+        f"Lũy kế {current_year} (tỷ đồng) · tất cả phòng"
+        if _phong_filter == "Tất cả"
+        else f"Lũy kế {current_year} (tỷ đồng) · {_phong_filter}"
+    )
+    _chart_title("Doanh thu theo tháng")
+    _chart_sub(_sub_label)
+
+    if not _monthly_long.empty:
+        _y_max = float(_monthly_total["rev_b"].max() * 1.35) if not _monthly_total.empty else 1.0
+        if _phong_filter == "Tất cả":
+            _color_map = {
+                "Phòng Phát triển đối tác": _BLUE,
+                "Phòng Bảo hiểm số": _BLUE3,
+            }
+            _m_base = (
+                alt.Chart(_monthly_long)
+                .mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3)
+                .encode(
+                    x=alt.X("thang_str:N", title=None, sort=_thang_order_m,
+                            axis=alt.Axis(labelFontSize=11, labelColor=_INK)),
+                    y=alt.Y("rev_b:Q", title="Tỷ đồng",
+                            stack=True,
+                            scale=alt.Scale(domainMin=0, domainMax=_y_max),
+                            axis=alt.Axis(labelFontSize=10, labelColor=_MUTED)),
+                    color=alt.Color(
+                        "phong:N",
+                        scale=alt.Scale(
+                            domain=list(_color_map.keys()),
+                            range=list(_color_map.values()),
+                        ),
+                        legend=alt.Legend(title=None, orient="top", labelFontSize=11),
+                    ),
+                    tooltip=[
+                        alt.Tooltip("thang_str:N", title="Tháng"),
+                        alt.Tooltip("phong:N", title="Phòng"),
+                        alt.Tooltip("rev_b:Q", title="Tỷ đồng", format=".3f"),
+                    ],
+                )
+            )
+            _m_text = (
+                alt.Chart(_monthly_total)
+                .mark_text(dy=-6, fontSize=9, color=_INK)
+                .encode(
+                    x=alt.X("thang_str:N", sort=_thang_order_m),
+                    y=alt.Y("rev_b:Q", stack=True),
+                    text="label_b:N",
+                )
+            )
+            st.altair_chart(
+                (_m_base + _m_text).properties(height=260).configure_view(strokeWidth=0),
+                width='stretch',
+            )
+        else:
+            _monthly_long["label_b"] = (_monthly_long["rev_b"] * 1e9).apply(fmt_currency)
+            _m_base = alt.Chart(_monthly_long).encode(
+                x=alt.X("thang_str:N", title=None, sort=_thang_order_m,
+                        axis=alt.Axis(labelFontSize=11, labelColor=_INK)),
+                y=alt.Y("rev_b:Q", title="Tỷ đồng",
+                        scale=alt.Scale(domainMin=0, domainMax=_y_max),
+                        axis=alt.Axis(labelFontSize=10, labelColor=_MUTED)),
+                tooltip=[
+                    alt.Tooltip("thang_str:N", title="Tháng"),
+                    alt.Tooltip("rev_b:Q", title="Tỷ đồng", format=".3f"),
+                ],
+            )
+            _m_bars = _m_base.mark_bar(
+                color=_bar_color, cornerRadiusTopLeft=3, cornerRadiusTopRight=3
+            )
+            _m_text = _m_base.mark_text(dy=-6, fontSize=9, color=_INK).encode(
+                text="label_b:N"
+            )
+            st.altair_chart(
+                (_m_bars + _m_text).properties(height=260).configure_view(strokeWidth=0),
+                width='stretch',
+            )
+    else:
+        st.info("Chưa có dữ liệu cho bộ lọc này.")
+
     # ── Section 1: Cơ cấu doanh thu ──────────────────────────────────────────
     section_head(f"Cơ cấu doanh thu lũy kế {current_year}")
 
