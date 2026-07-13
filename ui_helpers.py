@@ -1,5 +1,6 @@
+import datetime
 import streamlit as st
-from data_loader import load_partner_data
+from data_loader import load_partner_data, load_bhs_data
 
 PARTNER_CHANNEL_DISPLAY: dict[str, str] = {
     "SHINHAN":    "Shinhan Bank",
@@ -139,4 +140,53 @@ def render_action_buttons() -> None:
     if st.button("⟳ Làm mới dữ liệu", width="stretch",
                  help="Xóa cache và tải lại dữ liệu mới nhất từ MotherDuck"):
         load_partner_data.clear()
+        load_bhs_data.clear()
         st.rerun()
+
+    st.markdown(
+        '<hr style="border:none;border-top:1px solid rgba(255,255,255,0.15);margin:16px 0 12px;">',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div style="color:rgba(255,255,255,0.6);font-size:10px;font-weight:700;'
+        'letter-spacing:0.15em;text-transform:uppercase;margin-bottom:10px;">'
+        'Xuất báo cáo</div>',
+        unsafe_allow_html=True,
+    )
+
+    from export_helpers import generate_excel_bytes
+
+    df_all  = load_partner_data()
+    df_bhs  = load_bhs_data()
+
+    available_years = sorted(df_all["nam"].unique().tolist(), reverse=True)
+    year = st.selectbox(
+        "Năm",
+        available_years,
+        index=0,
+        key="export_year",
+    )
+
+    cur_month = datetime.date.today().month
+    month_opts = ["Cả năm"] + [f"T{m:02d}" for m in range(1, 13)]
+    default_month_idx = cur_month  # index cur_month → "T{cur_month:02d}"
+    month_sel = st.selectbox(
+        "Đến tháng",
+        month_opts,
+        index=min(default_month_idx, len(month_opts) - 1),
+        key="export_month",
+    )
+    month = None if month_sel == "Cả năm" else int(month_sel[1:])
+
+    label    = f"T{month:02d}" if month is not None else "ca_nam"
+    filename = f"bhtt_rev_report_{year}_{label}.xlsx"
+
+    excel_bytes = generate_excel_bytes(df_all, df_bhs, year, month)
+    st.download_button(
+        label="⬇ Xuất dữ liệu",
+        data=excel_bytes,
+        file_name=filename,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        width="stretch",
+        help="Tải file Excel báo cáo doanh thu",
+    )
